@@ -2,7 +2,7 @@
 
 `run_data_case.sh` reproduces the Ni I and Ni/Ca-like workflows archived in
 `test/data/` without modifying those inputs. It loads the site GRASP module
-(`grasp/grasp_raw`) for the external `rangular_mpi` and `rwfnestimate`
+(`grasp/grasp_2990_NNNP`) for the external `rangular_mpi` and `rwfnestimate`
 programs, while `rmcdhf_mpi` is always taken from this repository's build.
 The MPI module and orbital tracing are enabled automatically, and every
 artifact is written to a new output directory.
