@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Run the reproducible matrix supported by the Ni I and Ni/Ca-like fixtures.
+set -euo pipefail
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+    echo "usage: $0 <output-root> [smoke|cl|full]" >&2
+    exit 2
+fi
+
+output_root=$1
+profile=${2:-smoke}
+if [[ $profile != smoke && $profile != cl && $profile != full ]]; then
+    echo "profile must be 'smoke', 'cl', or 'full'" >&2
+    exit 2
+fi
+if [[ -e $output_root ]]; then
+    echo "output root already exists: $output_root" >&2
+    exit 2
+fi
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+runner=$repo_root/test/rmcdhf_orbopt/run_data_case.sh
+checker=$repo_root/test/rmcdhf_orbopt/check_strict_scf.py
+mkdir -p "$output_root"
+output_root=$(cd "$output_root" && pwd)
+
+if [[ -n ${GRASP_BUILD_DIR:-} ]]; then
+    source /usr/share/Modules/init/bash
+    module load mpi/openmpi-x86_64
+    cmake --build "$GRASP_BUILD_DIR" --target rmcdhf_mpi -j"${GRASP_BUILD_JOBS:-4}"
+fi
+
+run_case() {
+    local family=$1 mode=$2 stage=$3 ranks=$4 tag=$5
+    shift 5
+    env "$@" bash "$runner" "$family" "$mode" \
+        "$output_root/$tag" "$ranks" estimate "$stage"
+}
+
+if [[ $profile == smoke || $profile == full ]]; then
+    # Quick code-path coverage on the compact Ni/Ca-like fixture.
+    run_case ni_ca_like nv 1 1 ni_ca_as1_b0
+    run_case ni_ca_like optimized 1 1 ni_ca_as1_b1
+    run_case ni_ca_like minus_only 1 1 ni_ca_as1_b2
+    run_case ni_ca_like balanced 1 1 ni_ca_as1_b3
+    run_case ni_ca_like balanced 1 1 ni_ca_as1_b4 GRASP_ORBITAL_DAMPING=-0.5
+    run_case ni_ca_like balanced 1 1 ni_ca_as1_b5 GRASP_DEFER_ORTHY=1 \
+        GRASP_EXPECT_RMCDHF_FAILURE=1
+    run_case ni_ca_like balanced 1 1 ni_ca_as1_b6 GRASP_STRICT_METHOD3=1
+    run_case ni_ca_like balanced 1 1 ni_ca_as1_strict GRASP_STRICT_SCF=1
+    python3 "$checker" "$output_root/ni_ca_as1_b3/orbopt_trace.csv" --mode legacy
+    python3 "$checker" "$output_root/ni_ca_as1_strict/orbopt_trace.csv" --mode strict
+fi
+
+if [[ $profile == cl || $profile == full ]]; then
+    run_case cl_i nv 1 1 cl_as1_b0
+    run_case cl_i optimized 1 1 cl_as1_b1
+    run_case cl_i minus_only 1 1 cl_as1_b2
+    run_case cl_i balanced 1 1 cl_as1_b3
+    run_case cl_i balanced 1 1 cl_as1_b4 GRASP_ORBITAL_DAMPING=-0.5 \
+        GRASP_TRACE_RWFN=1
+    run_case cl_i balanced 1 1 cl_as1_b5 GRASP_DEFER_ORTHY=1 \
+        GRASP_EXPECT_RMCDHF_FAILURE=1
+    run_case cl_i balanced 1 1 cl_as1_b6 GRASP_STRICT_METHOD3=1
+    run_case cl_i balanced 1 1 cl_as1_strict GRASP_STRICT_SCF=1
+    run_case cl_i balanced 1 1 cl_as1_b8_equal \
+        GRASP_ORBITAL_DAMPING=-0.5 GRASP_LEVEL_WEIGHT=1
+    python3 "$checker" "$output_root/cl_as1_b3/orbopt_trace.csv" --mode legacy
+    python3 "$checker" "$output_root/cl_as1_strict/orbopt_trace.csv" --mode strict
+    GRASP_SERIAL_BINDIR=${GRASP_SERIAL_BINDIR:-$repo_root/build-debug/bin} \
+        bash "$repo_root/test/rmcdhf_orbopt/run_serial_comparison.sh" \
+        "$output_root/cl_as1_b3" "$output_root/cl_as1_b3_serial"
+    python3 "$repo_root/test/rmcdhf_orbopt/compare_fine_structure.py" \
+        --j-values 1/2,3/2 --parity - \
+        B0="$output_root/cl_as1_b0/rmcdhf.sum" \
+        B1="$output_root/cl_as1_b1/rmcdhf.sum" \
+        B2="$output_root/cl_as1_b2/rmcdhf.sum" \
+        B3="$output_root/cl_as1_b3/rmcdhf.sum" \
+        B4="$output_root/cl_as1_b4/rmcdhf.sum" \
+        B6="$output_root/cl_as1_b6/rmcdhf.sum" \
+        STRICT="$output_root/cl_as1_strict/rmcdhf.sum" \
+        B8_EQUAL="$output_root/cl_as1_b8_equal/rmcdhf.sum" \
+        > "$output_root/cl_as1_fine_structure.csv"
+fi
+
+if [[ $profile == full ]]; then
+    for family in ni_ca_like ni_i; do
+        for stage in 1 2; do
+            for mode in nv optimized minus_only balanced; do
+                tag=${family}_as${stage}_${mode}
+                run_case "$family" "$mode" "$stage" 1 "$tag"
+            done
+            tag=${family}_as${stage}_balanced_damped
+            run_case "$family" balanced "$stage" 1 "$tag" \
+                GRASP_ORBITAL_DAMPING=-0.5
+        done
+    done
+
+    previous_wave=$output_root/cl_as1_b4/rwfn.out
+    for stage in 2 3 4 5; do
+        tag=cl_as${stage}_balanced_damped
+        ranks=1
+        extra_env=()
+        if [[ $stage == 5 ]]; then
+            ranks=4
+            extra_env+=(GRASP_OMP_THREADS=12)
+        fi
+        run_case cl_i balanced "$stage" "$ranks" "$tag" \
+            GRASP_ORBITAL_DAMPING=-0.5 GRASP_PREVIOUS_WAVE="$previous_wave" \
+            "${extra_env[@]}"
+        previous_wave=$output_root/$tag/rwfn.out
+    done
+
+    for ranks in 2 4; do
+        run_case cl_i balanced 1 "$ranks" "cl_as1_b4_np${ranks}" \
+            GRASP_ORBITAL_DAMPING=-0.5 GRASP_OMP_THREADS=12
+    done
+
+    # Process-count repeatability uses the balanced AS2 candidate selected by
+    # the diagnostic experiments.  The 1-rank result is already present.
+    for ranks in 2 4; do
+        run_case ni_ca_like balanced 2 "$ranks" \
+            "ni_ca_as2_balanced_np${ranks}"
+        run_case ni_i balanced 2 "$ranks" "ni_i_as2_balanced_np${ranks}"
+    done
+fi
+
+printf 'profile,%s\nstatus,complete\n' "$profile" > "$output_root/matrix_status.csv"
+echo "matrix complete: $output_root"

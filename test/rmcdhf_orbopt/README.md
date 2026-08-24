@@ -53,6 +53,58 @@ python3 test/rmcdhf_orbopt/compare_fine_structure.py \
 
 The current AS2 B2/B3 findings are recorded in `RESULTS.md`.
 
+Strict convergence is enabled without changing stdin:
+
+```sh
+GRASP_STRICT_SCF=1 bash test/rmcdhf_orbopt/run_data_case.sh \
+  ni_ca_like balanced /tmp/ni-ca-strict 1 estimate 1
+```
+
+`convergence_check.txt` verifies that legacy runs stop on the historical
+orbital-or-energy condition.  In strict mode it verifies that the first
+iteration has no valid previous-energy comparison and that both criteria pass
+for two consecutive iterations before the program exits.
+
+Run the available automated matrix with:
+
+```sh
+GRASP_BINDIR=/path/to/current/bin \
+  bash test/rmcdhf_orbopt/run_matrix.sh /tmp/rmcdhf-matrix smoke
+```
+
+The `smoke` profile covers B0--B6 and strict convergence on Ni/Ca-like AS1.
+B5 sets `GRASP_DEFER_ORTHY=1` to orthogonalize only at the macro-iteration
+boundary.  On the current Ni/Ca-like fixture this produces a non-finite
+weighted energy, so the smoke matrix records B5 as an expected failure; SCF
+now stops immediately on non-finite weighted energy instead of exhausting its
+iteration limit.  B6 sets `GRASP_STRICT_METHOD3=1`, which fixes all varied orbitals to
+METHOD=3 and terminates instead of falling back to METHOD=2.  The `cl` profile
+runs the corresponding Cl I AS1 B0--B6 matrix, writes a
+half-integer-J fine-structure comparison, and independently cross-checks B4
+iteration wavefunctions.  `full` adds both Ni data families, AS1/AS2 and MPI
+1/2/4 balanced AS2 runs; it also chains the damped balanced Cl I wavefunctions
+through AS2--AS5 using `GRASP_PREVIOUS_WAVE`, instead of restarting each stage
+from the archived unbalanced wavefunction.  The Cl matrix also reruns B3 with
+serial `rangular`/`rmcdhf`; the full profile adds MPI 2/4-rank B4 comparisons.
+It also runs a B8 equal-weight comparison through `GRASP_LEVEL_WEIGHT=1`;
+supported automatic values are 1 (equal) and 5 (statistical).
+
+For independent wavefunction checks, set `GRASP_TRACE_RWFN=1`.  The program
+then saves `rwfn.out.iterNNN` after each macro iteration.  The runner writes
+`rwfn_metrics.csv` by parsing those unformatted G92RWF files independently of
+the in-process trace, and `rwfn_crosscheck.csv` verifies that overlap and
+radius-factor trends correlate with the internal accepted metrics:
+
+```sh
+GRASP_TRACE_RWFN=1 bash test/rmcdhf_orbopt/run_data_case.sh \
+  ni_ca_like balanced /tmp/ni-ca-rwfn 1 estimate 1
+```
+
+This diagnostic is default-off because iteration snapshots add disk I/O.  The
+external calculation uses the recorded radial grid and trapezoidal integration
+instead of GRASP's internal `QUAD`, making it useful as an independent trend
+check rather than a bitwise duplicate of the internal metric.
+
 Optional B4/guard controls are passed through the environment, for example:
 
 ```sh

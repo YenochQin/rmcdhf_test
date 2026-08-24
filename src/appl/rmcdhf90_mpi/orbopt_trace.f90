@@ -19,7 +19,7 @@
       USE ORBOPT_CONTROL_C
       IMPLICIT NONE
 
-      INTEGER, PARAMETER :: TRACE_FIELD_COUNT = 50
+      INTEGER, PARAMETER :: TRACE_FIELD_COUNT = 58
       INTEGER, PARAMETER :: TRACE_FIELD_LENGTH = 128
       LOGICAL :: TRACE_OPEN = .FALSE.
 
@@ -48,6 +48,10 @@
       CALL PUT_INTEGER(FIELDS(47), MAX_REJECTS_PER_ORBITAL)
       CALL PUT_LOGICAL(FIELDS(46), REJECT_NODE_CHANGE)
       CALL PUT_LOGICAL(FIELDS(38), ENABLE_ORBITAL_GUARD)
+      CALL PUT_LOGICAL(FIELDS(55), STRICT_SCF_CONVERGENCE)
+      CALL PUT_LOGICAL(FIELDS(56), SAVE_RWFN_ITERATIONS)
+      CALL PUT_LOGICAL(FIELDS(57), DEFER_ORTHOGONALIZATION)
+      CALL PUT_LOGICAL(FIELDS(58), STRICT_METHOD3)
       CALL EMIT_TRACE_ROW(ORBOPT_TRACE_UNIT, FIELDS)
       END SUBROUTINE TRACE_ORBOPT_CONTROLS
 
@@ -67,7 +71,10 @@
          'wtaev0,dampmx,convg_orbital,convg_energy,convg_final,' // &
          'overlap,detail,candidate_norm,old_norm,radius_old,' //   &
          'radius_candidate,nodes_old,nodes_candidate,mf_old,' //   &
-         'mtp_candidate,energy_delta,level_weight'
+         'mtp_candidate,energy_delta,level_weight,convg_legacy,' // &
+         'convg_strict,strict_streak,energy_valid,' //             &
+         'strict_scf_enabled,save_rwfn_iterations,defer_orthy,' // &
+         'strict_method3'
       END SUBROUTINE WRITE_TRACE_HEADER
 
       SUBROUTINE CLEAR_TRACE_FIELDS(FIELDS, EVENT, NIT)
@@ -307,10 +314,14 @@
       CALL EMIT_TRACE_ROW(ORBOPT_TRACE_UNIT, FIELDS)
       END SUBROUTINE TRACE_ORTHY_PROJECTION
 
-      SUBROUTINE TRACE_SCF_END(NIT, CONVG_ORBITAL, CONVG_ENERGY,    &
-                               CONVG_FINAL, WTAEV, WTAEV0, DAMPMX)
-      INTEGER, INTENT(IN) :: NIT
-      LOGICAL, INTENT(IN) :: CONVG_ORBITAL, CONVG_ENERGY, CONVG_FINAL
+      SUBROUTINE TRACE_SCF_END(NIT, CONVG_ORBITAL, CONVG_ENERGY,   &
+                               CONVG_LEGACY, CONVG_STRICT,          &
+                               CONVG_FINAL, ENERGY_VALID,           &
+                               STRICT_STREAK, WTAEV, WTAEV0, DAMPMX)
+      INTEGER, INTENT(IN) :: NIT, STRICT_STREAK
+      LOGICAL, INTENT(IN) :: CONVG_ORBITAL, CONVG_ENERGY
+      LOGICAL, INTENT(IN) :: CONVG_LEGACY, CONVG_STRICT
+      LOGICAL, INTENT(IN) :: CONVG_FINAL, ENERGY_VALID
       REAL(DOUBLE), INTENT(IN) :: WTAEV, WTAEV0, DAMPMX
       CHARACTER(LEN=TRACE_FIELD_LENGTH) :: FIELDS(TRACE_FIELD_COUNT)
       CALL OPEN_ORBOPT_TRACE
@@ -322,10 +333,14 @@
       CALL PUT_LOGICAL(FIELDS(36), CONVG_ORBITAL)
       CALL PUT_LOGICAL(FIELDS(37), CONVG_ENERGY)
       CALL PUT_LOGICAL(FIELDS(38), CONVG_FINAL)
+      CALL PUT_LOGICAL(FIELDS(51), CONVG_LEGACY)
+      CALL PUT_LOGICAL(FIELDS(52), CONVG_STRICT)
+      CALL PUT_INTEGER(FIELDS(53), STRICT_STREAK)
+      CALL PUT_LOGICAL(FIELDS(54), ENERGY_VALID)
       IF (.NOT.CONVG_FINAL) THEN
          FIELDS(40) = 'continue'
-      ELSE IF (CONVG_ORBITAL .AND. CONVG_ENERGY) THEN
-         FIELDS(40) = 'orbital_and_energy'
+      ELSE IF (STRICT_SCF_CONVERGENCE) THEN
+         FIELDS(40) = 'strict_two_consecutive'
       ELSE IF (CONVG_ORBITAL) THEN
          FIELDS(40) = 'orbital'
       ELSE

@@ -13,16 +13,16 @@ from pathlib import Path
 CSF_RE = re.compile(r"in\s+(\d+)\s+relativistic CSFs")
 GRID_RE = re.compile(r"^\s*N\s*=\s*(\d+);", re.MULTILINE)
 LEVEL_RE = re.compile(
-    r"^\s*(\d+)\s+(\d+)\s+([+-])\s+([-+0-9.DEd]+)\s+", re.MULTILINE
+    r"^\s*(\d+)\s+(\d+(?:/\d+)?)\s+([+-])\s+([-+0-9.DEd]+)\s+", re.MULTILINE
 )
 
 
-def parse(path: Path) -> tuple[int, int, dict[tuple[int, int, str], float]]:
+def parse(path: Path) -> tuple[int, int, dict[tuple[int, str, str], float]]:
     text = path.read_text(encoding="utf-8")
     csf_match = CSF_RE.search(text)
     grid_match = GRID_RE.search(text)
     levels = {
-        (int(level), int(j), parity): float(energy.replace("D", "E"))
+        (int(level), j, parity): float(energy.replace("D", "E"))
         for level, j, parity, energy in LEVEL_RE.findall(text)
     }
     if not csf_match or not grid_match or not levels:
@@ -55,7 +55,7 @@ def main() -> int:
         if current_levels.keys() != reference_levels.keys():
             raise ValueError("level labels or ordering differ")
         max_delta = 0.0
-        max_delta_key: tuple[int, int, str] | None = None
+        max_delta_key: tuple[int, str, str] | None = None
         for key in current_levels:
             left, right = current_levels[key], reference_levels[key]
             delta = abs(left - right)

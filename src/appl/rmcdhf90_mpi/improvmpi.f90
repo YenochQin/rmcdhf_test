@@ -37,7 +37,8 @@
       USE ORBOPT_CONTROL_C, ONLY: TRACE_ORBOPT,                     &
             ENABLE_ORBITAL_GUARD, MIN_ORBITAL_OVERLAP,             &
             MAX_RADIUS_RATIO, REJECT_NODE_CHANGE,                  &
-            RECORD_ORBITAL_REJECTION, CLEAR_ORBITAL_REJECTIONS
+            RECORD_ORBITAL_REJECTION, CLEAR_ORBITAL_REJECTIONS,    &
+            STRICT_METHOD3
       USE ORBOPT_METRICS_C, ONLY: CALCULATE_ORBITAL_METRICS
       USE ORBOPT_METRICS_C, ONLY: CHECK_ORBITAL_QUALITY
       USE ORBOPT_TRACE_C, ONLY: TRACE_ORBITAL_UPDATE,               &
@@ -232,6 +233,12 @@
 !
       IF (FAIL) THEN
          IF (MYID == 0) WRITE (*, 300) NP(J), NH(J), METHOD(J)
+         IF (STRICT_METHOD3) THEN
+            IF (MYID == 0) WRITE (*,'(A,I0,A,A)')                  &
+               'ORBOPT strict METHOD=3 failed for ', NP(J), NH(J), &
+               '; fallback disabled'
+            ERROR STOP 'ORBOPT strict METHOD=3 solve failure'
+         ENDIF
          IF (METHOD(J) /= 2) THEN
             METHOD(J) = 2
             FALLBACK = .TRUE.

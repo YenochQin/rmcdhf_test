@@ -51,3 +51,51 @@ changes. Pair completeness therefore affects fine-structure ordering, but is
 not sufficient to make candidate orbitals stable; damping/guard experiments
 show that fixed damping stabilizes accepted updates. Automatic pair expansion
 and strict raw-candidate guarding must both remain disabled by default.
+
+## Cl I AS1 B0--B6
+
+The Cl I fixture was added under `test/data/Cl_I`.  The archived optimized
+selection varies only the positive member of each relativistic pair.  Results
+below use one MPI rank unless noted.
+
+| Variant | Iterations | Ordering | Fine-structure interval (cm-1) | Minimum accepted overlap |
+| --- | ---: | --- | ---: | ---: |
+| B0 no-varied | 1 | J3/2 < J1/2 | 923.811587 | n/a |
+| B1 positive only | 8 | J1/2 < J3/2 | -2479.507866 | 0.616734 |
+| B2 minus only | 8 | J3/2 < J1/2 | 3788.603393 | 0.616734 |
+| B3 balanced | 12 | J3/2 < J1/2 | 932.188187 | 0.558525 |
+| B4 balanced, damping -0.5 | 21 | J3/2 < J1/2 | 932.184017 | 0.894903 |
+| B5 deferred ORTHY | expected failure | non-finite at iteration 2 | n/a | n/a |
+| B6 strict METHOD=3 | 12 | J3/2 < J1/2 | 932.188187 | 0.558525 |
+| strict SCF | 35 | J3/2 < J1/2 | 932.190382 | 0.558525 |
+| B8 equal EOL weights, damping -0.5 | 21 | J3/2 < J1/2 | 931.497237 | 0.897132 |
+
+B4's independent RWFN cross-check matched 105 accepted updates.  Internal and
+external overlap trends correlated at 0.996964; radius-factor trends correlated
+at 0.989158.  B3 used METHOD=3 throughout and had no fallback, and B6 reproduced
+B3 exactly.  Serial B3 and MPI B3 results were byte-identical.  B4 results with
+MPI 1, 2, and 4 ranks were also byte-identical and produced no rank-summary
+mismatch files.  Changing B4 from statistical to equal EOL weights changes the
+interval by only -0.686780 cm-1 and does not alter the ordering or convergence
+count, so the large B1 inversion is not explained by this weight choice.
+
+## Cl I chained AS1--AS5
+
+Each stage below starts from the preceding stage's newly accepted balanced,
+damped wavefunction.  This avoids reintroducing the archived one-sided orbital
+relaxation at every active-space boundary.
+
+| Stage | Iterations | Interval (cm-1) | Minimum accepted overlap | Maximum radius factor | Accepted node-change events |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| AS1 | 21 | 932.184017 | 0.894903 | 1.561 | 0 |
+| AS2 | 20 | 930.990273 | 0.719901 | 2.195 | 5 |
+| AS3 | 21 | 931.119697 | 0.712187 | 2.469 | 12 |
+| AS4 | 27 | 931.148075 | 0.703857 | 2.713 | 20 |
+| AS5 | 29 | 931.094852 | 0.699937 | 2.822 | 29 |
+
+All five stages preserve `J3/2 < J1/2`, have no solver fallback, and show no
+MPI rank-summary mismatch.  The interval is stable near 931 cm-1, whereas the
+archived one-sided optimized sequence remains inverted from -1894.98 cm-1 at
+AS2 to -1739.74 cm-1 at AS5.  Node counts still fluctuate from AS2 onward, so
+the spectrum/order criterion passes but the final orbital-shape stability
+criterion remains open.
