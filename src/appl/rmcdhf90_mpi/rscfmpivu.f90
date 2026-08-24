@@ -49,6 +49,10 @@
        USE core_C
        USE iounit_C
        USE mpi_C
+      USE fixd_C, ONLY: LFIX
+      USE orthct_C, ONLY: ORTHST
+      USE orb_C, ONLY: NW
+      USE scf_C, ONLY: METHOD
       USE ORBOPT_CONTROL_C
 !GG po to isimti
        USE TATB_C
@@ -151,6 +155,10 @@
       if(myid == 0) file1 = permdir(1:lenperm) // '/isodata'
       if(myid == 0) file2 = permdir(1:lenperm) // '/rwfn.inp'
       CALL GETSCDmpi (EOL, idblk, file1, file2 )
+      IF (DEFER_ORTHOGONALIZATION) ORTHST = .FALSE.
+      IF (STRICT_METHOD3) THEN
+         WHERE (.NOT.LFIX(:NW)) METHOD(:NW) = 3
+      ENDIF
 !     &            permdir(1:lenperm) // '/isodata',
 !     &            permdir(1:lenperm) // '/rwfn.inp')
       file1 = '  '

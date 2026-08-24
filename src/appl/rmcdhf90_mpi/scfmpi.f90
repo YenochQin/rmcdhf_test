@@ -25,6 +25,7 @@
 !   M o d u l e s
 !-----------------------------------------------
       USE vast_kind_param, ONLY:  DOUBLE
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
       USE memory_man
       USE blkidx_C
       USE default_C
@@ -45,7 +46,9 @@
       USE SYMA_C
       USE STAT_C
       USE ORTHCT_C
-      USE ORBOPT_CONTROL_C, ONLY: SET_ORBOPT_ITERATION
+      USE ORBOPT_CONTROL_C, ONLY: SET_ORBOPT_ITERATION,             &
+                                  STRICT_SCF_CONVERGENCE,            &
+                                  SAVE_RWFN_ITERATIONS
       USE ORBOPT_TRACE_C, ONLY: TRACE_SCF_BEGIN, TRACE_SCF_END,     &
                                 TRACE_MPI_SUMMARY, CLOSE_ORBOPT_TRACE
 !-----------------------------------------------
@@ -69,12 +72,14 @@
 !-----------------------------------------------
       LOGICAL  :: EOL
       CHARACTER  :: RWFFILE2*(*)
+      CHARACTER(LEN=1024) :: RWF_SNAPSHOT
 !-----------------------------------------------
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
-      INTEGER :: J, I, NIT, JSEQ, KOUNT, K, L_MPI
+      INTEGER :: J, I, NIT, JSEQ, KOUNT, K, L_MPI, STRICT_STREAK
       REAL(DOUBLE) :: WTAEV, WTAEV0, DAMPMX
       LOGICAL :: CONVG, CONVG_ENERGY, CONVG_ORBITAL, LSORT, dvdfirst
+      LOGICAL :: CONVG_LEGACY, CONVG_STRICT, ENERGY_VALID
 !-----------------------------------------------
 !CFF   .. set the logical variable dvdfirst
       dvdfirst = .true.
@@ -175,6 +180,7 @@
          CALL NEWCOmpi (WTAEV)
       ENDIF
       WTAEV0 = 0.0
+      STRICT_STREAK = 0
       dvdfirst = .false.
       DO NIT = 1, NSCF
          IF (MYID == 0) WRITE (*, 301) NIT
@@ -238,10 +244,19 @@
 !   Write the subshell radial wavefunctions to the .rwf file
 
          IF (MYID == 0) CALL ORBOUT (RWFFILE2)
+         IF (MYID == 0 .AND. SAVE_RWFN_ITERATIONS) THEN
+            WRITE (RWF_SNAPSHOT,'(A,".iter",I3.3)') TRIM(RWFFILE2), NIT
+            CALL ORBOUT(TRIM(RWF_SNAPSHOT))
+         ENDIF
 
          IF (EOL) THEN
             CALL MATRIXmpi(dvdfirst)
             CALL NEWCOmpi (WTAEV)
+            IF (.NOT.IEEE_IS_FINITE(WTAEV)) THEN
+               IF (MYID == 0) WRITE (ISTDE,'(A,I0)')              &
+                  'SCFmpi: non-finite weighted energy at iteration ', NIT
+               ERROR STOP 'SCFmpi: non-finite weighted energy'
+            ENDIF
          ENDIF
 !        Make this a relative convergence test
 !        IF(ABS(WTAEV-WTAEV0).LT.1.0D-9.and.
@@ -253,10 +268,29 @@
 !cjb     IF(DABS(WTAEV-WTAEV0).LT.1.0D-8.and.              &
 !cjb                   DAMPMX.LT.1.0D-2) CONVG=.true.
          CONVG_ORBITAL = CONVG
-         CONVG_ENERGY = ABS((WTAEV - WTAEV0)/WTAEV) < 0.001*ACCY
-         IF (CONVG_ENERGY) CONVG = .TRUE.
-         CALL TRACE_SCF_END(NIT, CONVG_ORBITAL, CONVG_ENERGY, CONVG,&
-                            WTAEV, WTAEV0, DAMPMX)
+!        The first EOL iteration has no previous weighted energy.  Do not
+!        let its synthetic WTAEV0=0 value contribute to strict convergence.
+         ENERGY_VALID = EOL .AND. NIT > 1 .AND. WTAEV /= 0.D0
+         CONVG_ENERGY = .FALSE.
+         IF (EOL .AND. WTAEV /= 0.D0)                              &
+            CONVG_ENERGY = ABS((WTAEV - WTAEV0)/WTAEV) < 0.001*ACCY
+         CONVG_LEGACY = CONVG_ORBITAL .OR. CONVG_ENERGY
+         CONVG_STRICT = CONVG_ORBITAL .AND. CONVG_ENERGY .AND.     &
+                        ENERGY_VALID
+         IF (CONVG_STRICT) THEN
+            STRICT_STREAK = STRICT_STREAK + 1
+         ELSE
+            STRICT_STREAK = 0
+         ENDIF
+         IF (STRICT_SCF_CONVERGENCE) THEN
+            CONVG = STRICT_STREAK >= 2
+         ELSE
+            CONVG = CONVG_LEGACY
+         ENDIF
+         CALL TRACE_SCF_END(NIT, CONVG_ORBITAL, CONVG_ENERGY,      &
+                            CONVG_LEGACY, CONVG_STRICT, CONVG,      &
+                            ENERGY_VALID, STRICT_STREAK, WTAEV,     &
+                            WTAEV0, DAMPMX)
          CALL TRACE_MPI_SUMMARY(NIT)
          WTAEV0 = WTAEV
          IF (.NOT.CONVG) CYCLE

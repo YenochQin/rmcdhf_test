@@ -9,10 +9,13 @@
       IMPLICIT NONE
 
       LOGICAL :: TRACE_ORBOPT = .FALSE.
+      LOGICAL :: SAVE_RWFN_ITERATIONS = .FALSE.
       LOGICAL :: WARN_UNBALANCED_PAIR = .TRUE.
       LOGICAL :: REQUIRE_BALANCED_PAIR = .FALSE.
       LOGICAL :: ENABLE_ORBITAL_GUARD = .FALSE.
       LOGICAL :: STRICT_SCF_CONVERGENCE = .FALSE.
+      LOGICAL :: DEFER_ORTHOGONALIZATION = .FALSE.
+      LOGICAL :: STRICT_METHOD3 = .FALSE.
       INTEGER :: ORBOPT_TRACE_UNIT = 735
       INTEGER :: ORBOPT_ITERATION = 0
       CHARACTER(LEN=256) :: ORBOPT_TRACE_DIRECTORY = ''
@@ -28,12 +31,17 @@
       SUBROUTINE INIT_ORBOPT_CONTROL
       IF (myid == 0) THEN
          CALL READ_LOGICAL_ENV('GRASP_TRACE_ORBOPT', TRACE_ORBOPT)
+         CALL READ_LOGICAL_ENV('GRASP_TRACE_RWFN',                   &
+                               SAVE_RWFN_ITERATIONS)
          CALL READ_LOGICAL_ENV('GRASP_REQUIRE_BALANCED_PAIR',       &
                                REQUIRE_BALANCED_PAIR)
          CALL READ_LOGICAL_ENV('GRASP_ORBITAL_GUARD',               &
                                ENABLE_ORBITAL_GUARD)
          CALL READ_LOGICAL_ENV('GRASP_STRICT_SCF',                  &
                                STRICT_SCF_CONVERGENCE)
+         CALL READ_LOGICAL_ENV('GRASP_DEFER_ORTHY',                 &
+                               DEFER_ORTHOGONALIZATION)
+         CALL READ_LOGICAL_ENV('GRASP_STRICT_METHOD3', STRICT_METHOD3)
          CALL READ_REAL_ENV('GRASP_ORBITAL_DAMPING',                &
                             FIXED_ORBITAL_DAMPING)
          CALL READ_REAL_ENV('GRASP_MIN_ORBITAL_OVERLAP',            &
@@ -72,11 +80,17 @@
 
       CALL MPI_Bcast(TRACE_ORBOPT, 1, MPI_LOGICAL, 0,               &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(SAVE_RWFN_ITERATIONS, 1, MPI_LOGICAL, 0,       &
+                     MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(REQUIRE_BALANCED_PAIR, 1, MPI_LOGICAL, 0,      &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(ENABLE_ORBITAL_GUARD, 1, MPI_LOGICAL, 0,       &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(STRICT_SCF_CONVERGENCE, 1, MPI_LOGICAL, 0,     &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(DEFER_ORTHOGONALIZATION, 1, MPI_LOGICAL, 0,    &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(STRICT_METHOD3, 1, MPI_LOGICAL, 0,             &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(FIXED_ORBITAL_DAMPING, 1,                     &
                      MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
@@ -90,12 +104,15 @@
                      MPI_COMM_WORLD, ierr)
       ORBITAL_REJECT_COUNT = 0
 
-      IF (myid == 0 .AND. (TRACE_ORBOPT .OR.                       &
+      IF (myid == 0 .AND. (TRACE_ORBOPT .OR. SAVE_RWFN_ITERATIONS .OR. &
           REQUIRE_BALANCED_PAIR .OR. ENABLE_ORBITAL_GUARD .OR.     &
-          STRICT_SCF_CONVERGENCE)) THEN
-         WRITE (*,'(A,4(1X,L1))') 'ORBOPT controls:',               &
+          STRICT_SCF_CONVERGENCE .OR. DEFER_ORTHOGONALIZATION .OR. &
+          STRICT_METHOD3)) THEN
+         WRITE (*,'(A,7(1X,L1))') 'ORBOPT controls:',               &
             TRACE_ORBOPT, REQUIRE_BALANCED_PAIR,                   &
-            ENABLE_ORBITAL_GUARD, STRICT_SCF_CONVERGENCE
+            ENABLE_ORBITAL_GUARD, STRICT_SCF_CONVERGENCE,          &
+            SAVE_RWFN_ITERATIONS, DEFER_ORTHOGONALIZATION,         &
+            STRICT_METHOD3
       ENDIF
       IF (myid == 0 .AND. (FIXED_ORBITAL_DAMPING /= 0.D0 .OR.     &
                            ENABLE_ORBITAL_GUARD)) THEN
