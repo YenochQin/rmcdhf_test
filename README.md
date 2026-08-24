@@ -1,4 +1,7 @@
-# GRASP - The General-purpose Relativistic Atomic Structure Package
+# rmcdhf_test
+
+This repository is a focused test workspace for the serial, MPI, and memory
+variants of the GRASP `rmcdhf` program and their required libraries.
 
 ![Tests][tests-badge]
 [![][doxygen-badge]][doxygen-url]
@@ -9,6 +12,16 @@ programs for performing fully-relativistic electron structure calculations of
 atoms.
 
 ## Installation
+
+Before every configure or build, load the MPI toolchain first:
+
+```sh
+source /usr/share/Modules/init/zsh
+module load mpi/openmpi-x86_64
+```
+
+Loading this module ensures that the MPI compiler wrappers and numerical
+libraries used by the serial and parallel comparison runs are consistent.
 
 > **Please note:**
 > The installation instructions here are for the _development version_ on the
@@ -38,7 +51,7 @@ The first step with CMake is to create a separate out-of-source build directory.
 `configure.sh` script can do that for you:
 
 ```sh
-cd grasp/ && ./configure.sh
+cd rmcdhf_test/ && ./configure.sh
 ```
 
 This will create a `build/` directory with the default _Release_ build

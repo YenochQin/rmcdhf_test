@@ -12,6 +12,16 @@ scientific examples and regression-style workflows are under
 
 ## Build, Test, and Development Commands
 
+Before configuring or compiling, initialize the MPI toolchain in the shell:
+
+```sh
+source /usr/share/Modules/init/zsh
+module load mpi/openmpi-x86_64
+```
+
+This step is required even for serial targets so that the compiler and BLAS/MPI
+environment are consistent across comparison runs.
+
 Use an out-of-source CMake build:
 
 ```sh

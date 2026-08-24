@@ -18,7 +18,7 @@
 # Environment Modules.
 cmake_minimum_required(VERSION 3.6)
 
-project(grasp)
+project(rmcdhf_test)
 
 enable_language(Fortran)
 enable_testing()
@@ -131,33 +131,10 @@ message("* LAPACK_LINKER_FLAGS:             ${LAPACK_LINKER_FLAGS}")
 add_subdirectory("src/lib/libmod")
 add_subdirectory("src/lib/lib9290")
 add_subdirectory("src/lib/libdvd90")
-add_subdirectory("src/lib/libmcp90")
-add_subdirectory("src/lib/librang90")
 
 # GRASP application programs
-add_subdirectory("src/appl/HF")
-add_subdirectory("src/appl/jj2lsj90")
-add_subdirectory("src/appl/jjgen90")
-add_subdirectory("src/appl/rangular90")
-add_subdirectory("src/appl/rbiotransform90")
-add_subdirectory("src/appl/rci90")
-add_subdirectory("src/appl/rcsfgenerate90")
-add_subdirectory("src/appl/rcsfinteract90")
-add_subdirectory("src/appl/rcsfzerofirst90")
-add_subdirectory("src/appl/rhfs90")
 add_subdirectory("src/appl/rmcdhf90")
 add_subdirectory("src/appl/rmcdhf90_mem")
-add_subdirectory("src/appl/rnucleus90")
-add_subdirectory("src/appl/rtransition90")
-add_subdirectory("src/appl/rtransition90_phase")
-add_subdirectory("src/appl/rwfnestimate90")
-add_subdirectory("src/appl/sms90")
-add_subdirectory("src/appl/rdensity")
-add_subdirectory("src/appl/ris4")
-add_subdirectory("src/appl/rhfszeeman95")
-
-# Additional GRASP tools and programs
-add_subdirectory("src/tool")
 
 # We only build MPI programs and libraries if we can actually find MPI on
 # the user's system.
@@ -169,12 +146,8 @@ if(MPI_Fortran_FOUND)
     message("* MPI_Fortran_LINK_FLAGS:         ${MPI_Fortran_LINK_FLAGS}")
 
     add_subdirectory("src/lib/mpi90")
-    add_subdirectory("src/appl/rangular90_mpi")
-    add_subdirectory("src/appl/rbiotransform90_mpi")
-    add_subdirectory("src/appl/rci90_mpi")
     add_subdirectory("src/appl/rmcdhf90_mpi")
     add_subdirectory("src/appl/rmcdhf90_mem_mpi")
-    add_subdirectory("src/appl/rtransition90_mpi")
 else()
     message("MPI libraries not found. Not building MPI-dependent programs.")
 endif(MPI_Fortran_FOUND)

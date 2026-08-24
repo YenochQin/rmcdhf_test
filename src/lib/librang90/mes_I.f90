@@ -1,8 +1,0 @@
-      MODULE mes_I
-      INTERFACE
-!
-      SUBROUTINE MES(I)
-      INTEGER, INTENT(IN) :: I
-      END SUBROUTINE
-      END INTERFACE
-      END MODULE

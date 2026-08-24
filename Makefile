@@ -18,18 +18,14 @@ export LAPACK_LIBS ?= -llapack -lblas
 export FC_MPIFLAGS ?= $(FC_FLAGS)
 export FC_MPILD ?= $(FC_LD)
 
-LIBRARIES = libmod lib9290 libdvd90 libmcp90 librang90 mpi90
-APPLICATIONS = HF jjgen90 rangular90 rbiotransform90 rci90 rcsfgenerate90 \
-	rcsfzerofirst90 rmcdhf90 rnucleus90 rtransition90_mpi sms90 jj2lsj90  \
-	rangular90_mpi rbiotransform90_mpi rci90_mpi rcsfinteract90 rhfs90    \
-	rmcdhf90_mpi  rtransition90  rwfnestimate90  rmcdhf90_mem  rmcdhf90_mem_mpi \
-	rdensity ris4 rhfszeeman95 rtransition90_phase
+LIBRARIES = libmod lib9290 libdvd90 mpi90
+APPLICATIONS = rmcdhf90 rmcdhf90_mem rmcdhf90_mpi rmcdhf90_mem_mpi
 
 LIBRARY_TARGETS = $(foreach library,$(LIBRARIES),src/lib/$(library))
 APPLICATION_TARGETS = $(foreach application,$(APPLICATIONS),src/appl/$(application))
 
-.PHONY: all lib appl tool $(LIBRARY_TARGETS) $(APPLICATION_TARGETS)
-all: lib appl tool
+.PHONY: all lib appl $(LIBRARY_TARGETS) $(APPLICATION_TARGETS)
+all: lib appl
 appl: $(APPLICATION_TARGETS)
 lib: $(LIBRARY_TARGETS)
 $(LIBRARY_TARGETS): src/lib/%:
@@ -38,15 +34,11 @@ $(LIBRARY_TARGETS): src/lib/%:
 $(APPLICATION_TARGETS): src/appl/%: lib
 	@echo "Building: $@"
 	$(MAKE) -C $@
-tool: lib
-	@echo "Building: src/tool"
-	$(MAKE) -C src/tool
-
 LIBRARY_CLEAN_TARGETS = $(foreach library,$(LIBRARIES),clean/lib/$(library))
 APPLICATION_CLEAN_TARGETS = $(foreach application,$(APPLICATIONS),clean/appl/$(application))
-.PHONY: clean cleanall clean/lib clean/appl clean/tool $(LIBRARY_CLEAN_TARGETS) $(APPLICATION_CLEAN_TARGETS)
-clean: clean/lib clean/appl clean/tool $(LIBRARY_CLEAN_TARGETS) $(APPLICATION_CLEAN_TARGETS)
-cleanall: clean/lib clean/appl clean/tool clean/exec $(LIBRARY_CLEAN_TARGETS) $(APPLICATION_CLEAN_TARGETS)
+.PHONY: clean cleanall clean/lib clean/appl $(LIBRARY_CLEAN_TARGETS) $(APPLICATION_CLEAN_TARGETS)
+clean: clean/lib clean/appl $(LIBRARY_CLEAN_TARGETS) $(APPLICATION_CLEAN_TARGETS)
+cleanall: clean/lib clean/appl clean/exec $(LIBRARY_CLEAN_TARGETS) $(APPLICATION_CLEAN_TARGETS)
 clean/lib: $(LIBRARY_CLEAN_TARGETS)
 $(LIBRARY_CLEAN_TARGETS): clean/lib/%:
 	$(MAKE) -C src/lib/$* clean
@@ -56,5 +48,3 @@ clean/exec:
 	rm -vf $(GRASP)/lib/*.a
 $(APPLICATION_CLEAN_TARGETS): clean/appl/%:
 	$(MAKE) -C src/appl/$* clean
-clean/tool:
-	$(MAKE) -C src/tool clean

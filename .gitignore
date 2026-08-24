@@ -9,6 +9,7 @@
 # Ignore user build configuration files
 CMakeLists.user
 Make.user
+Make.user.*
 
 # Ignore generated CMake files
 build/
@@ -27,3 +28,23 @@ build-*/
 # Ignore Python bytecode caches
 __pycache__/
 *.py[cod]
+
+# This checkout is intentionally limited to GRASP source and focused tests.
+# Examples, documentation, and auxiliary tooling are not synchronized.
+/grasptest/
+/contrib/
+/doc/
+/src/tool/
+
+# Local compiler/build output and calculation products.
+*.a
+*.so
+*.dylib
+*.dat
+*.sum
+*.iso
+*.csl
+*.w
+*.rwf
+*.res
+*.log
