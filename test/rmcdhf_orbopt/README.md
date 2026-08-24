@@ -1,10 +1,11 @@
 # RMCDHF Orbital-Optimization Data Tests
 
 `run_data_case.sh` reproduces the Ni I and Ni/Ca-like workflows archived in
-`test/data/` without modifying those inputs. It uses the repository's current
-`rangular_mpi`, `rwfnestimate`, and `rmcdhf_mpi`, loads
-`mpi/openmpi-x86_64`, enables orbital tracing, and writes every artifact to a
-new output directory.
+`test/data/` without modifying those inputs. It loads the site GRASP module
+(`grasp/grasp_raw`) for the external `rangular_mpi` and `rwfnestimate`
+programs, while `rmcdhf_mpi` is always taken from this repository's build.
+The MPI module and orbital tracing are enabled automatically, and every
+artifact is written to a new output directory.
 
 The runner sets `OMP_NUM_THREADS=1` and `OPENBLAS_NUM_THREADS=1`, because the
 FlexiBLAS-managed OpenBLAS backend is OpenMP-enabled. Override both with
@@ -25,6 +26,11 @@ from the archived wavefunction and is useful for convergence-repeatability
 checks. The runner deliberately uses the archived stage `.c` file instead of
 `*raw.c`, so current tests isolate RMCDHF behavior from zero-first CSF
 generation differences.
+
+Set `GRASP_MODULE` to use a site-specific GRASP module name.  The local
+RMCDHF executable directory can be overridden with
+`GRASP_RMCDHF_MPI_BINDIR` (or the legacy `GRASP_BINDIR` fallback); the latter
+no longer needs to contain `rangular_mpi` or `rwfnestimate`.
 
 `minus_only` implements diagnostic variant B2 by optimizing the minus member
 of each relativistic pair. `balanced` implements B3 by optimizing both members

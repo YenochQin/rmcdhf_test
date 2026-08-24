@@ -27,7 +27,7 @@ if [[ $initial_wave != estimate && $initial_wave != archived ]]; then
     exit 2
 fi
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-binary_dir=${GRASP_BINDIR:-$repo_root/build-debug/bin}
+rmcdhf_bindir=${GRASP_RMCDHF_MPI_BINDIR:-${GRASP_BINDIR:-$repo_root/build-debug/bin}}
 data_root=$repo_root/test/data
 max_stage=2
 asf_selection=$'1-2\n1\n1-3\n1\n1-2'
@@ -165,13 +165,6 @@ archived_wave=${prefix}as${stage}.w
 varied_name=varied_as${stage}
 varied=${!varied_name}
 
-for executable in rangular_mpi rwfnestimate rmcdhf_mpi; do
-    if [[ ! -x $binary_dir/$executable ]]; then
-        echo "missing executable: $binary_dir/$executable" >&2
-        exit 2
-    fi
-done
-
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 mpi_tmp=$output_dir/mpi_tmp
@@ -195,6 +188,19 @@ fi
 
 source /usr/share/Modules/init/bash
 module load mpi/openmpi-x86_64
+module load "${GRASP_MODULE:-grasp/grasp_raw}"
+if ! command -v rangular_mpi >/dev/null 2>&1; then
+    echo "missing module-provided executable: rangular_mpi" >&2
+    exit 2
+fi
+if ! command -v rwfnestimate >/dev/null 2>&1; then
+    echo "missing module-provided executable: rwfnestimate" >&2
+    exit 2
+fi
+if [[ ! -x $rmcdhf_bindir/rmcdhf_mpi ]]; then
+    echo "missing repository executable: $rmcdhf_bindir/rmcdhf_mpi" >&2
+    exit 2
+fi
 export MPI_TMP=$mpi_tmp
 export GRASP_TRACE_ORBOPT=1
 # FlexiBLAS uses the OpenBLAS OpenMP backend on the reference host. Keep
@@ -207,19 +213,19 @@ fi
 
 cd "$output_dir"
 printf 'y\n' > rangular.stdin
-mpirun -n "$nprocs" "$binary_dir/rangular_mpi" \
+mpirun -n "$nprocs" rangular_mpi \
     < rangular.stdin > rangular.stdout 2>&1
 
 if [[ $initial_wave == estimate ]]; then
     printf 'y\n1\nprevious.w\n*\n2\n*\n4\n*\n4\n' > rwfnestimate.stdin
-    "$binary_dir/rwfnestimate" \
+    rwfnestimate \
         < rwfnestimate.stdin > rwfnestimate.stdout 2>&1
 fi
 
 printf 'y\n%s\n%s\n%s\n\n100\n' \
     "$asf_selection" "$level_weight" "$varied" > rmcdhf.stdin
 set +e
-mpirun -n "$nprocs" "$binary_dir/rmcdhf_mpi" \
+mpirun -n "$nprocs" "$rmcdhf_bindir/rmcdhf_mpi" \
     < rmcdhf.stdin > rmcdhf.stdout 2>&1
 rmcdhf_status=$?
 set -e
