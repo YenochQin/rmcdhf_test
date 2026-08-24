@@ -27,6 +27,13 @@ checks. The runner deliberately uses the archived stage `.c` file instead of
 `*raw.c`, so current tests isolate RMCDHF behavior from zero-first CSF
 generation differences.
 
+After a successful RMCDHF run, the runner also performs the standard GRASP
+post-processing sequence: `rsave`, `jj2lsj`, MPI `rhfs_mpi`, and `rlevels`.
+The resulting `.level` file is converted with
+`graspkit-tools/pyscript/read_level_to_csv.py` (including LSJ and g_J data) to
+`${prefix}as${stage}_rmcdhf.csv`. Set `GRASPKITTOOLS` when the sibling
+`graspkit-tools` checkout is elsewhere.
+
 Set `GRASP_MODULE` to use a site-specific GRASP module name.  The local
 RMCDHF executable directory can be overridden with
 `GRASP_RMCDHF_MPI_BINDIR` (or the legacy `GRASP_BINDIR` fallback); the latter

@@ -28,6 +28,8 @@ if [[ $initial_wave != estimate && $initial_wave != archived ]]; then
 fi
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 rmcdhf_bindir=${GRASP_RMCDHF_MPI_BINDIR:-${GRASP_BINDIR:-$repo_root/build-debug/bin}}
+graspkit_tools=${GRASPKITTOOLS:-$repo_root/../graspkit-tools}
+graspkit_python=${GRASPKIT_PYTHON:-$graspkit_tools/.venv/bin/python}
 data_root=$repo_root/test/data
 max_stage=2
 asf_selection=$'1-2\n1\n1-3\n1\n1-2'
@@ -197,6 +199,12 @@ if ! command -v rwfnestimate >/dev/null 2>&1; then
     echo "missing module-provided executable: rwfnestimate" >&2
     exit 2
 fi
+for executable in rsave jj2lsj rhfs_mpi rlevels; do
+    if ! command -v "$executable" >/dev/null 2>&1; then
+        echo "missing module-provided executable: $executable" >&2
+        exit 2
+    fi
+done
 if [[ ! -x $rmcdhf_bindir/rmcdhf_mpi ]]; then
     echo "missing repository executable: $rmcdhf_bindir/rmcdhf_mpi" >&2
     exit 2
@@ -242,6 +250,26 @@ if [[ $rmcdhf_status -ne 0 ]]; then
     echo "rmcdhf_mpi failed with exit code $rmcdhf_status" >&2
     exit "$rmcdhf_status"
 fi
+
+# Reproduce the standard GRASP post-processing chain.  rsave consumes the
+# current rmcdhf.sum/rwfn.inp pair, jj2lsj creates the LSJ-labelled .m file,
+# rhfs_mpi writes the hyperfine/LSJ companion, and rlevels emits the readable
+# level table consumed by graspkit-tools.
+result_name=${prefix}as${stage}
+rsave "$result_name" > rsave.stdout 2>&1
+printf '%s\nn\ny\ny\n' "$result_name" | jj2lsj > jj2lsj.stdout 2>&1
+mpirun -n "$nprocs" rhfs_mpi "$result_name" --nonci > rhfs.stdout 2>&1
+rlevels "$result_name.m" | tee "$result_name.level"
+if [[ ! -f $graspkit_tools/pyscript/read_level_to_csv.py ]]; then
+    echo "missing level converter: $graspkit_tools/pyscript/read_level_to_csv.py" >&2
+    exit 2
+fi
+if [[ ! -x $graspkit_python ]]; then
+    graspkit_python=python3
+fi
+"$graspkit_python" "$graspkit_tools/pyscript/read_level_to_csv.py" \
+    -f "$result_name.level" -lsj -gj \
+    -o "${result_name}_rmcdhf.csv"
 convergence_mode=legacy
 case ${GRASP_STRICT_SCF:-0} in
     1|true|TRUE|yes|YES|on|ON) convergence_mode=strict ;;
