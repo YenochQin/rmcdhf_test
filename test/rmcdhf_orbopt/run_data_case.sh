@@ -199,12 +199,22 @@ if ! command -v rwfnestimate >/dev/null 2>&1; then
     echo "missing module-provided executable: rwfnestimate" >&2
     exit 2
 fi
-for executable in rsave jj2lsj rhfs_mpi rlevels; do
+for executable in rsave jj2lsj rlevels; do
     if ! command -v "$executable" >/dev/null 2>&1; then
         echo "missing module-provided executable: $executable" >&2
         exit 2
     fi
 done
+rhfs_launcher=()
+if command -v rhfs_mpi >/dev/null 2>&1; then
+    rhfs_launcher=(mpirun -n "$nprocs" rhfs_mpi)
+elif command -v rhfs >/dev/null 2>&1; then
+    echo "warning: module has no rhfs_mpi; using serial rhfs for post-processing" >&2
+    rhfs_launcher=(rhfs)
+else
+    echo "missing module-provided executable: rhfs_mpi (or fallback rhfs)" >&2
+    exit 2
+fi
 if [[ ! -x $rmcdhf_bindir/rmcdhf_mpi ]]; then
     echo "missing repository executable: $rmcdhf_bindir/rmcdhf_mpi" >&2
     exit 2
@@ -258,7 +268,7 @@ fi
 result_name=${prefix}as${stage}
 rsave "$result_name" > rsave.stdout 2>&1
 printf '%s\nn\ny\ny\n' "$result_name" | jj2lsj > jj2lsj.stdout 2>&1
-mpirun -n "$nprocs" rhfs_mpi "$result_name" --nonci > rhfs.stdout 2>&1
+"${rhfs_launcher[@]}" "$result_name" --nonci > rhfs.stdout 2>&1
 rlevels "$result_name.m" | tee "$result_name.level"
 if [[ ! -f $graspkit_tools/pyscript/read_level_to_csv.py ]]; then
     echo "missing level converter: $graspkit_tools/pyscript/read_level_to_csv.py" >&2

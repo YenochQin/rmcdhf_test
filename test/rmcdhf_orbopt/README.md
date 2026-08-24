@@ -33,6 +33,9 @@ The resulting `.level` file is converted with
 `graspkit-tools/pyscript/read_level_to_csv.py` (including LSJ and g_J data) to
 `${prefix}as${stage}_rmcdhf.csv`. Set `GRASPKITTOOLS` when the sibling
 `graspkit-tools` checkout is elsewhere.
+If the selected GRASP module does not ship `rhfs_mpi` (the current
+`grasp/grasp_2990_NNNP` module ships only `rhfs`), the runner reports a warning
+and uses serial `rhfs` for this post-processing-only step.
 
 Set `GRASP_MODULE` to use a site-specific GRASP module name.  The local
 RMCDHF executable directory can be overridden with
