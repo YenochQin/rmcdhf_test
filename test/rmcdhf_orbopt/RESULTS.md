@@ -99,3 +99,29 @@ archived one-sided optimized sequence remains inverted from -1894.98 cm-1 at
 AS2 to -1739.74 cm-1 at AS5.  Node counts still fluctuate from AS2 onward, so
 the spectrum/order criterion passes but the final orbital-shape stability
 criterion remains open.
+
+## Comparison with NIST ASD levels
+
+The NIST exports in `data/nist_levels` were matched by configuration, term,
+parity, and J. Values below are intervals in cm-1; Ni I is referenced to
+`3d8(3F)4s2 3F4`, and Ni IX (Ca-like) to `3p6 3d2 3F2`. Parentheses give
+calculation minus NIST; negative intervals indicate inversion.
+
+| Species / run | J2 | J3 | J4 | Ordering |
+| --- | ---: | ---: | ---: | --- |
+| Ni I NVaried AS1 | 2297.1 (+80.6) | 1378.7 (+46.5) | 0.0 (+0.0) | J4 < J3 < J2 |
+| Ni I NVaried AS2 | 2303.9 (+87.3) | 1385.5 (+53.4) | 0.0 (+0.0) | J4 < J3 < J2 |
+| Ni I optimized AS1 | -2734.4 (-4951.0) | -1419.6 (-2751.8) | 0.0 (+0.0) | J2 < J3 < J4 |
+| Ni I optimized AS2 | -8440.3 (-10656.9) | -4196.5 (-5528.6) | 0.0 (+0.0) | J2 < J3 < J4 |
+| Ni I optimized AS5 | -10132.7 (-12349.3) | -4932.5 (-6264.6) | 0.0 (+0.0) | J2 < J3 < J4 |
+| Ni IX NVaried AS1 | 0.0 (+0.0) | 2021.6 (+141.6) | 4473.6 (+403.6) | J2 < J3 < J4 |
+| Ni IX NVaried AS2 | 0.0 (+0.0) | 2020.9 (+140.9) | 4471.7 (+401.7) | J2 < J3 < J4 |
+| Ni IX optimized AS1 | 0.0 (+0.0) | 590.0 (-1290.0) | 1287.2 (-2782.8) | J2 < J3 < J4 |
+| Ni IX optimized AS2 | 0.0 (+0.0) | 68.1 (-1811.9) | 62.4 (-4007.6) | J2 < J4 < J3 |
+
+NIST references are Ni I: J2=2216.550, J3=1332.164, J4=0.000; and
+Ni IX: J2=0, J3=1880, J4=4070 cm-1. Fixed-orbital Ni I preserves the
+ordering and is 46--87 cm-1 high, whereas one-sided optimization inverts it.
+For Ni IX, fixed orbitals are within 142--404 cm-1; optimized AS1/AS2
+degrade the splittings, with AS2 swapping J3/J4. Matching used the dominant
+`3F` components listed in the corresponding `.uni.lsj.sum` files.
