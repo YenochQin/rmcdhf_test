@@ -119,6 +119,25 @@ GRASP_DAMPING_RANKS=4 GRASP_DAMPING_THREADS=12 \
   bash test/rmcdhf_orbopt/run_matrix.sh /tmp/rmcdhf-damping damping
 ```
 
+When more than one thread is requested, the runner maps each MPI rank to
+`PE=GRASP_OMP_THREADS` distinct cores and enables core-level OpenMP binding.
+Without this explicit OpenMPI mapping, the default `bind-to core` policy would
+confine all threads in a rank to one core.  The exact launcher and thread
+settings are saved in `mpi_launcher.txt`.
+
+Run three complete matrices and compare runs 2 and 3 with run 1 to give every
+damping variant three executions under the same 4-rank, 12-core-per-rank
+configuration:
+
+```sh
+GRASP_BINDIR=/path/to/current/bin \
+  bash test/rmcdhf_orbopt/run_damping_repeats.sh /tmp/rmcdhf-damping-repeats
+```
+
+The repeatability checker requires identical iteration counts, node-change
+counts, fallback counts, and ordering. Floating-point summary fields must
+agree within `1e-6` by default.
+
 For independent wavefunction checks, set `GRASP_TRACE_RWFN=1`.  The program
 then saves `rwfn.out.iterNNN` after each macro iteration.  The runner writes
 `rwfn_metrics.csv` by parsing those unformatted G92RWF files independently of

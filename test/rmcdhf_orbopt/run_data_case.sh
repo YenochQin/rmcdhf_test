@@ -205,12 +205,14 @@ for executable in rsave jj2lsj rlevels; do
         exit 2
     fi
 done
-rhfs_launcher=()
+rhfs_program=
+rhfs_is_mpi=0
 if command -v rhfs_mpi >/dev/null 2>&1; then
-    rhfs_launcher=(mpirun -n "$nprocs" rhfs_mpi)
+    rhfs_program=rhfs_mpi
+    rhfs_is_mpi=1
 elif command -v rhfs >/dev/null 2>&1; then
     echo "warning: module has no rhfs_mpi; using serial rhfs for post-processing" >&2
-    rhfs_launcher=(rhfs)
+    rhfs_program=rhfs
 else
     echo "missing module-provided executable: rhfs_mpi (or fallback rhfs)" >&2
     exit 2
@@ -221,17 +223,40 @@ if [[ ! -x $rmcdhf_bindir/rmcdhf_mpi ]]; then
 fi
 export MPI_TMP=$mpi_tmp
 export GRASP_TRACE_ORBOPT=1
-# FlexiBLAS uses the OpenBLAS OpenMP backend on the reference host. Keep
-# each MPI rank single-threaded to avoid rank_count x core_count oversubscription.
+# FlexiBLAS uses the OpenBLAS OpenMP backend on the reference host.  Default to
+# one thread; when explicitly increased, reserve that many cores per MPI rank.
 export OMP_NUM_THREADS=${GRASP_OMP_THREADS:-1}
 export OPENBLAS_NUM_THREADS=${GRASP_OMP_THREADS:-1}
+if ! [[ $OMP_NUM_THREADS =~ ^[1-9][0-9]*$ ]]; then
+    echo "GRASP_OMP_THREADS must be a positive integer" >&2
+    exit 2
+fi
+mpi_launcher=(mpirun -n "$nprocs")
+if (( OMP_NUM_THREADS > 1 )); then
+    mpi_launcher=(mpirun --map-by "slot:PE=$OMP_NUM_THREADS" \
+        --bind-to core -n "$nprocs")
+    export OMP_PLACES=cores
+    export OMP_PROC_BIND=true
+fi
+if (( rhfs_is_mpi )); then
+    rhfs_launcher=("${mpi_launcher[@]}" "$rhfs_program")
+else
+    rhfs_launcher=("$rhfs_program")
+fi
 if [[ $mode == balanced ]]; then
     export GRASP_REQUIRE_BALANCED_PAIR=1
 fi
 
 cd "$output_dir"
+printf '%q ' "${mpi_launcher[@]}" > mpi_launcher.txt
+printf '\nOMP_NUM_THREADS=%s\nOPENBLAS_NUM_THREADS=%s\n' \
+    "$OMP_NUM_THREADS" "$OPENBLAS_NUM_THREADS" >> mpi_launcher.txt
+if (( OMP_NUM_THREADS > 1 )); then
+    printf 'OMP_PLACES=%s\nOMP_PROC_BIND=%s\n' \
+        "$OMP_PLACES" "$OMP_PROC_BIND" >> mpi_launcher.txt
+fi
 printf 'y\n' > rangular.stdin
-mpirun -n "$nprocs" rangular_mpi \
+"${mpi_launcher[@]}" rangular_mpi \
     < rangular.stdin > rangular.stdout 2>&1
 
 if [[ $initial_wave == estimate ]]; then
@@ -243,7 +268,7 @@ fi
 printf 'y\n%s\n%s\n%s\n\n100\n' \
     "$asf_selection" "$level_weight" "$varied" > rmcdhf.stdin
 set +e
-mpirun -n "$nprocs" "$rmcdhf_bindir/rmcdhf_mpi" \
+"${mpi_launcher[@]}" "$rmcdhf_bindir/rmcdhf_mpi" \
     < rmcdhf.stdin > rmcdhf.stdout 2>&1
 rmcdhf_status=$?
 set -e

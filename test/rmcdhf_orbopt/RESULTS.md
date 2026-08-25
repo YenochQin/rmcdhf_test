@@ -76,9 +76,31 @@ candidate.  Of the tested values, `-0.5` remains the balanced diagnostic
 choice.  `-0.8` is useful as a strong-stability comparison but its 40--47
 iteration cost does not support making it the default.
 
-The fastest tested configuration on the 48-core reference host was four MPI
-ranks with 12 OpenMP threads per rank. Pure 24-rank MPI was communication
-bound, while forcing every rank to one thread underused threaded BLAS.
+The reference host has 48 physical cores.  A later affinity audit found that
+OpenMPI's default core binding confined each nominal 12-thread rank to one
+core, so the original matrix did not establish a valid 48-core performance
+comparison.  The runner now explicitly uses `--map-by slot:PE=12 --bind-to
+core`, assigns four non-overlapping 12-core sets, and records the exact command
+and thread settings in each run's `mpi_launcher.txt`.
+
+## B4 Damping Repeatability
+
+The complete nine-case damping matrix was subsequently run three times with
+the corrected, identical 48-core affinity.  All 27 RMCDHF executions exited
+successfully, all three matrix status files reported `complete`, and no
+rank-summary mismatch file was produced.  Repeats 2 and 3 were compared with
+repeat 1 for all nine damping variants:
+
+- all 18 comparisons matched;
+- the maximum absolute floating-point summary delta was `0.00000000e+00`;
+- iteration counts, raw/accepted node-change counts, fallback counts, and
+  fine-structure ordering were identical.
+
+The repeated summaries also exactly reproduce the fixed-damping values in the
+table above.  Compact evidence is retained under
+`results/damping_repeatability_20260825/`; full traces remain in
+`/tmp/rmcdhf-damping-repeats-pe12-20260825`.  The requirement for at least
+three executions of every damping variant is therefore complete.
 
 All runs completed without solver fallback. B3 removed the unbalanced-pair
 warnings and restored the expected J ordering, but did not remove the large
