@@ -267,6 +267,10 @@ fi
 # level table consumed by graspkit-tools.
 result_name=${prefix}as${stage}
 rsave "$result_name" > rsave.stdout 2>&1
+# rsave renames the generic SCF summary to ${result_name}.sum.  Keep a
+# generic copy as the stable interface used by the comparison scripts and
+# run_matrix.sh; otherwise a successful calculation fails during reporting.
+cp "$result_name.sum" rmcdhf.sum
 printf '%s\nn\ny\ny\n' "$result_name" | jj2lsj > jj2lsj.stdout 2>&1
 "${rhfs_launcher[@]}" "$result_name" --nonci > rhfs.stdout 2>&1
 rlevels "$result_name.m" | tee "$result_name.level"

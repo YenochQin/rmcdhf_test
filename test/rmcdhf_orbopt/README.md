@@ -29,6 +29,8 @@ generation differences.
 
 After a successful RMCDHF run, the runner also performs the standard GRASP
 post-processing sequence: `rsave`, `jj2lsj`, MPI `rhfs_mpi`, and `rlevels`.
+Because `rsave` renames the generic `rmcdhf.sum`, the runner restores a copy
+under that generic name for the comparison scripts and matrix-level reports.
 The resulting `.level` file is converted with
 `graspkit-tools/pyscript/read_level_to_csv.py` (including LSJ and g_J data) to
 `${prefix}as${stage}_rmcdhf.csv`. Set `GRASPKITTOOLS` when the sibling
