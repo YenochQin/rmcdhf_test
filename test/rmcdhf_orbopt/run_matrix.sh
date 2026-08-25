@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Run the reproducible matrix supported by the Ni I and Ni/Ca-like fixtures.
+# Run the reproducible orbital-optimization matrices.
 set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-    echo "usage: $0 <output-root> [smoke|cl|full]" >&2
+    echo "usage: $0 <output-root> [smoke|cl|damping|full]" >&2
     exit 2
 fi
 
 output_root=$1
 profile=${2:-smoke}
-if [[ $profile != smoke && $profile != cl && $profile != full ]]; then
-    echo "profile must be 'smoke', 'cl', or 'full'" >&2
+if [[ $profile != smoke && $profile != cl && $profile != damping && $profile != full ]]; then
+    echo "profile must be 'smoke', 'cl', 'damping', or 'full'" >&2
     exit 2
 fi
 if [[ -e $output_root ]]; then
@@ -123,6 +123,52 @@ if [[ $profile == full ]]; then
             "ni_ca_as2_balanced_np${ranks}"
         run_case ni_i balanced 2 "$ranks" "ni_i_as2_balanced_np${ranks}"
     done
+fi
+
+if [[ $profile == damping ]]; then
+    damping_ranks=${GRASP_DAMPING_RANKS:-1}
+    damping_threads=${GRASP_DAMPING_THREADS:-1}
+    if ! [[ $damping_ranks =~ ^[1-9][0-9]*$ ]] || \
+       ! [[ $damping_threads =~ ^[1-9][0-9]*$ ]]; then
+        echo "GRASP_DAMPING_RANKS and GRASP_DAMPING_THREADS must be positive integers" >&2
+        exit 2
+    fi
+    for damping in -0.2 -0.5 -0.8; do
+        case $damping in
+            -0.2) damping_tag=02 ;;
+            -0.5) damping_tag=05 ;;
+            -0.8) damping_tag=08 ;;
+        esac
+        run_case cl_i balanced 1 "$damping_ranks" \
+            "cl_as1_damp_${damping_tag}" \
+            GRASP_ORBITAL_DAMPING="$damping" \
+            GRASP_OMP_THREADS="$damping_threads"
+        run_case ni_ca_like balanced 2 "$damping_ranks" \
+            "ni_ca_as2_damp_${damping_tag}" \
+            GRASP_ORBITAL_DAMPING="$damping" \
+            GRASP_OMP_THREADS="$damping_threads"
+        run_case ni_i balanced 2 "$damping_ranks" \
+            "ni_i_as2_damp_${damping_tag}" \
+            GRASP_ORBITAL_DAMPING="$damping" \
+            GRASP_OMP_THREADS="$damping_threads"
+    done
+
+    summarizer=$repo_root/test/rmcdhf_orbopt/summarize_damping.py
+    python3 "$summarizer" --j-values 1/2,3/2 --parity - \
+        D02="$output_root/cl_as1_damp_02" \
+        D05="$output_root/cl_as1_damp_05" \
+        D08="$output_root/cl_as1_damp_08" \
+        > "$output_root/cl_as1_damping.csv"
+    python3 "$summarizer" \
+        D02="$output_root/ni_ca_as2_damp_02" \
+        D05="$output_root/ni_ca_as2_damp_05" \
+        D08="$output_root/ni_ca_as2_damp_08" \
+        > "$output_root/ni_ca_as2_damping.csv"
+    python3 "$summarizer" \
+        D02="$output_root/ni_i_as2_damp_02" \
+        D05="$output_root/ni_i_as2_damp_05" \
+        D08="$output_root/ni_i_as2_damp_08" \
+        > "$output_root/ni_i_as2_damping.csv"
 fi
 
 printf 'profile,%s\nstatus,complete\n' "$profile" > "$output_root/matrix_status.csv"

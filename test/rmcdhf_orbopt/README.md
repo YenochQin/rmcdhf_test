@@ -107,6 +107,18 @@ serial `rangular`/`rmcdhf`; the full profile adds MPI 2/4-rank B4 comparisons.
 It also runs a B8 equal-weight comparison through `GRASP_LEVEL_WEIGHT=1`;
 supported automatic values are 1 (equal) and 5 (statistical).
 
+The `damping` profile completes the B4 parameter comparison at
+`ODAMP=-0.2,-0.5,-0.8` for Cl I AS1, Ni/Ca-like AS2, and Ni I AS2.  It writes
+one summary CSV per data family with raw and accepted orbital metrics, node
+changes, solver fallbacks, and final fine-structure intervals.  One MPI rank
+and one BLAS thread are used by default; controlled performance runs can set
+`GRASP_DAMPING_RANKS` and `GRASP_DAMPING_THREADS`:
+
+```sh
+GRASP_DAMPING_RANKS=4 GRASP_DAMPING_THREADS=12 \
+  bash test/rmcdhf_orbopt/run_matrix.sh /tmp/rmcdhf-damping damping
+```
+
 For independent wavefunction checks, set `GRASP_TRACE_RWFN=1`.  The program
 then saves `rwfn.out.iterNNN` after each macro iteration.  The runner writes
 `rwfn_metrics.csv` by parsing those unformatted G92RWF files independently of

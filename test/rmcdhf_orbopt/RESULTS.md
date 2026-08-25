@@ -40,6 +40,42 @@ raw candidate before `DAMPOR`: strict rejection can block a damped update that
 would itself be stable. The guard therefore remains disabled by default and
 must not yet be enabled as a production policy.
 
+## B4 Damping Matrix
+
+A fresh 4-rank, 12-thread-per-rank matrix compared fixed damping values
+`-0.2`, `-0.5`, and `-0.8` with identical balanced inputs.  All nine runs
+passed the legacy convergence check, preserved the expected fine-structure
+ordering, had exit status zero, and produced no MPI rank-summary mismatch.
+
+| Case | ODAMP | Iterations | Min accepted overlap | Max accepted radius factor | Accepted node changes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Cl I AS1 | -0.2 | 15 | 0.70448 | 2.48192 | 0 |
+| Cl I AS1 | -0.5 | 21 | 0.89490 | 1.56066 | 0 |
+| Cl I AS1 | -0.8 | 47 | 0.98577 | 1.13917 | 0 |
+| Ni/Ca-like AS2 | -0.2 | 10 | 0.40966 | 2.43846 | 0 |
+| Ni/Ca-like AS2 | -0.5 | 17 | 0.77317 | 1.55820 | 0 |
+| Ni/Ca-like AS2 | -0.8 | 40 | 0.97383 | 1.16298 | 0 |
+| Ni I AS2 | -0.2 | 18 | 0.26869 | 5.93090 | 3 |
+| Ni I AS2 | -0.5 | 29 | 0.71710 | 2.35940 | 3 |
+| Ni I AS2 | -0.8 | 47 | 0.97056 | 1.32233 | 2 |
+
+The final intervals changed only slightly across the matrix.  Cl I stayed at
+`932.187814`, `932.184017`, and `932.175480 cm-1`.  Ni/Ca-like retained
+`J2 < J3 < J4`; its J3/J4 intervals relative to J2 ranged from
+`1890.344876/4188.661488` to `1890.668382/4189.335495 cm-1`.  Ni I retained
+`J4 < J3 < J2`; its J3/J2 intervals relative to J4 ranged from
+`1210.842200/2015.433345` to `1212.143026/2017.565541 cm-1`.
+
+Stronger damping consistently stabilized the actually accepted update but
+increased the convergence count substantially.  It did not improve the Ni I
+raw candidates: their minimum overlap stayed near `0.028`, maximum radius
+factor stayed near `8.6`, and cumulative raw node-change events increased
+from 4 to 28 as the number of iterations grew.  Fixed damping therefore
+mitigates acceptance-path overstep; it does not repair the raw `SOLVE`
+candidate.  Of the tested values, `-0.5` remains the balanced diagnostic
+choice.  `-0.8` is useful as a strong-stability comparison but its 40--47
+iteration cost does not support making it the default.
+
 The fastest tested configuration on the 48-core reference host was four MPI
 ranks with 12 OpenMP threads per rank. Pure 24-rank MPI was communication
 bound, while forcing every rank to one thread underused threaded BLAS.
