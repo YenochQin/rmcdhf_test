@@ -1,7 +1,17 @@
 # RMCDHF Orbital-Optimization Data Tests
 
+## Slurm `mkdisks` 路径注意事项
+
+Job 511 的诊断确认，当前 `mkdisks` 的第二个参数是基础目录，脚本会
+自动追加 `/mpi_tmp`。在统一接口前，不要把已经以 `/mpi_tmp` 结尾的路径
+直接传给该版本脚本，否则会生成 `/mpi_tmp/mpi_tmp` 并导致
+`rangular_mpi` 找不到 `rcsf` 工作目录。诊断证据见
+`data/rmcdhf_test_data/results/mkdisks-diagnostic-511/diagnostic.txt`。
+
 `run_data_case.sh` reproduces the Ni I and Ni/Ca-like workflows archived in
-`test/data/` without modifying those inputs. It loads the site GRASP module
+`../data/rmcdhf_test_data/inputs/` without modifying those inputs. All new
+results are stored below `../data/rmcdhf_test_data/results/`; paths outside
+that directory are rejected. The runner loads the site GRASP module
 (`grasp/grasp_2990_NNNP`) for the external `rangular_mpi` and `rwfnestimate`
 programs, while `rmcdhf_mpi` is always taken from this repository's build.
 The MPI module and orbital tracing are enabled automatically, and every
@@ -13,9 +23,9 @@ FlexiBLAS-managed OpenBLAS backend is OpenMP-enabled. Override both with
 
 ```sh
 bash test/rmcdhf_orbopt/run_data_case.sh \
-  ni_i optimized /tmp/ni-i-as2 4 estimate 2
+  ni_i optimized ni-i-as2 4 estimate 2
 bash test/rmcdhf_orbopt/run_data_case.sh \
-  ni_ca_like nv /tmp/ni-ca-nv-as1 4 estimate 1
+  ni_ca_like nv ni-ca-nv-as1 4 estimate 1
 ```
 
 Arguments select the data family, `optimized`, `nv`, `minus_only`, or
@@ -63,8 +73,10 @@ Compare the lowest positive-parity J=2,3,4 levels across variants with:
 
 ```sh
 python3 test/rmcdhf_orbopt/compare_fine_structure.py \
-  NV=/tmp/ni-nv/rmcdhf.sum B1=/tmp/ni-b1/rmcdhf.sum \
-  B2=/tmp/ni-b2/rmcdhf.sum B3=/tmp/ni-b3/rmcdhf.sum
+  NV=../data/rmcdhf_test_data/results/ni-nv/rmcdhf.sum \
+  B1=../data/rmcdhf_test_data/results/ni-b1/rmcdhf.sum \
+  B2=../data/rmcdhf_test_data/results/ni-b2/rmcdhf.sum \
+  B3=../data/rmcdhf_test_data/results/ni-b3/rmcdhf.sum
 ```
 
 The current AS2 B2/B3 findings are recorded in `RESULTS.md`.
@@ -73,7 +85,7 @@ Strict convergence is enabled without changing stdin:
 
 ```sh
 GRASP_STRICT_SCF=1 bash test/rmcdhf_orbopt/run_data_case.sh \
-  ni_ca_like balanced /tmp/ni-ca-strict 1 estimate 1
+  ni_ca_like balanced ni-ca-strict 1 estimate 1
 ```
 
 `convergence_check.txt` verifies that legacy runs stop on the historical
@@ -85,7 +97,7 @@ Run the available automated matrix with:
 
 ```sh
 GRASP_BINDIR=/path/to/current/bin \
-  bash test/rmcdhf_orbopt/run_matrix.sh /tmp/rmcdhf-matrix smoke
+  bash test/rmcdhf_orbopt/run_matrix.sh rmcdhf-matrix smoke
 ```
 
 The `smoke` profile covers B0--B6 and strict convergence on Ni/Ca-like AS1.
@@ -113,7 +125,7 @@ radius-factor trends correlate with the internal accepted metrics:
 
 ```sh
 GRASP_TRACE_RWFN=1 bash test/rmcdhf_orbopt/run_data_case.sh \
-  ni_ca_like balanced /tmp/ni-ca-rwfn 1 estimate 1
+  ni_ca_like balanced ni-ca-rwfn 1 estimate 1
 ```
 
 This diagnostic is default-off because iteration snapshots add disk I/O.  The
@@ -126,12 +138,12 @@ Optional B4/guard controls are passed through the environment, for example:
 ```sh
 GRASP_ORBITAL_DAMPING=-0.5 \
   bash test/rmcdhf_orbopt/run_data_case.sh \
-  ni_i balanced /tmp/ni-b4 24 estimate 2
+  ni_i balanced ni-b4 24 estimate 2
 
 GRASP_ORBITAL_DAMPING=-0.5 GRASP_ORBITAL_GUARD=1 \
 GRASP_EXPECT_RMCDHF_FAILURE=1 \
   bash test/rmcdhf_orbopt/run_data_case.sh \
-  ni_i balanced /tmp/ni-guard 24 estimate 2
+  ni_i balanced ni-guard 24 estimate 2
 ```
 
 Guard thresholds are configured with `GRASP_MIN_ORBITAL_OVERLAP`,
@@ -140,3 +152,15 @@ Guard thresholds are configured with `GRASP_MIN_ORBITAL_OVERLAP`,
 records the real MPI exit status in `rmcdhf.exitcode`.
 
 An existing output directory is rejected to prevent accidental data loss.
+
+## 后续测试参数约定
+
+| 变量 | 作用 |
+| --- | --- |
+| `GRASP_ASF_SELECTION` | 覆盖 ASF 选择，多行值按各块顺序给出，用于 B8 状态集合对照 |
+| `GRASP_ALLOW_RADIAL_GRID_DIFFERENCE=1` | 允许已记录的 `NNNP=2990` 与 `NNNP=590` 径向网格差异 |
+| `GRASP_ALLOW_LEVEL_DIFFERENCES=1` | 允许 B8 改变状态集合，比较共有能级并报告独有能级 |
+
+这些参数默认关闭，不改变历史计算流程。它们只影响测试输入或比较器，
+不放宽 CSF 数量检查。B8 结果必须记录 `NNNP`、网格点数、ASF 选择、
+共有/独有能级数量和最大共有能级能量差。

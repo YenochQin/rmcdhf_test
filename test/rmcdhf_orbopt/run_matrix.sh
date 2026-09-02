@@ -13,12 +13,26 @@ if [[ $profile != smoke && $profile != cl && $profile != full ]]; then
     echo "profile must be 'smoke', 'cl', or 'full'" >&2
     exit 2
 fi
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+storage_root=$(realpath -m "$repo_root/../data/rmcdhf_test_data")
+results_root=$storage_root/results
+mkdir -p "$results_root"
+if [[ $output_root != /* ]]; then
+    output_root=$results_root/$output_root
+fi
+output_root=$(realpath -m "$output_root")
+case "$output_root" in
+    "$results_root"/*) ;;
+    *)
+        echo "output root must be below $results_root: $output_root" >&2
+        exit 2
+        ;;
+esac
 if [[ -e $output_root ]]; then
     echo "output root already exists: $output_root" >&2
     exit 2
 fi
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 runner=$repo_root/test/rmcdhf_orbopt/run_data_case.sh
 checker=$repo_root/test/rmcdhf_orbopt/check_strict_scf.py
 mkdir -p "$output_root"
@@ -67,7 +81,7 @@ if [[ $profile == cl || $profile == full ]]; then
         GRASP_ORBITAL_DAMPING=-0.5 GRASP_LEVEL_WEIGHT=1
     python3 "$checker" "$output_root/cl_as1_b3/orbopt_trace.csv" --mode legacy
     python3 "$checker" "$output_root/cl_as1_strict/orbopt_trace.csv" --mode strict
-    GRASP_SERIAL_BINDIR=${GRASP_SERIAL_BINDIR:-$repo_root/build-debug/bin} \
+    GRASP_SERIAL_BINDIR=${GRASP_SERIAL_BINDIR:-$(dirname "$(command -v rangular)")} \
         bash "$repo_root/test/rmcdhf_orbopt/run_serial_comparison.sh" \
         "$output_root/cl_as1_b3" "$output_root/cl_as1_b3_serial"
     python3 "$repo_root/test/rmcdhf_orbopt/compare_fine_structure.py" \

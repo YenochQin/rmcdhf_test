@@ -10,6 +10,26 @@ fi
 mpi_case=$1
 output_dir=$2
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+storage_root=$(realpath -m "$repo_root/../data/rmcdhf_test_data")
+results_root=$storage_root/results
+mkdir -p "$results_root"
+if [[ $mpi_case != /* ]]; then
+    mpi_case=$results_root/$mpi_case
+fi
+if [[ $output_dir != /* ]]; then
+    output_dir=$results_root/$output_dir
+fi
+mpi_case=$(realpath -m "$mpi_case")
+output_dir=$(realpath -m "$output_dir")
+for path in "$mpi_case" "$output_dir"; do
+    case "$path" in
+        "$results_root"/*) ;;
+        *)
+            echo "test data path must be below $results_root: $path" >&2
+            exit 2
+            ;;
+    esac
+done
 binary_dir=${GRASP_SERIAL_BINDIR:-$repo_root/build-debug/bin}
 
 if [[ -e $output_dir ]]; then

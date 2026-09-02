@@ -54,7 +54,8 @@ and strict raw-candidate guarding must both remain disabled by default.
 
 ## Cl I AS1 B0--B6
 
-The Cl I fixture was added under `test/data/Cl_I`.  The archived optimized
+The Cl I fixture is stored under
+`../data/rmcdhf_test_data/inputs/Cl_I`. The archived optimized
 selection varies only the positive member of each relativistic pair.  Results
 below use one MPI rank unless noted.
 
@@ -125,3 +126,30 @@ ordering and is 46--87 cm-1 high, whereas one-sided optimization inverts it.
 For Ni IX, fixed orbitals are within 142--404 cm-1; optimized AS1/AS2
 degrade the splittings, with AS2 swapping J3/J4. Matching used the dominant
 `3F` components listed in the corresponding `.uni.lsj.sum` files.
+# 2026-09-01 `mkdisks` 路径解析缺陷记录
+
+Slurm 诊断作业 `511` 已确认：当前实际调用的是
+`graspkit-tools/scripts/mkdisks`，该脚本把第二个参数解释为基础目录，
+并无条件追加 `/mpi_tmp`。因此调用：
+
+```sh
+mkdisks 1 /home/workstation2/caltmp/mpi_tmp
+```
+
+会在 `disks` 中写入：
+
+```text
+'/home/workstation2/caltmp/mpi_tmp/mpi_tmp'
+```
+
+诊断输出保存在
+`data/rmcdhf_test_data/results/mkdisks-diagnostic-511/diagnostic.txt`。
+此前 Job 504/506/509 的 `rangular_mpi` 失败及其后续 B7 作业
+`DependencyNeverSatisfied` 均与该路径解析问题相关。修复前不得将这些
+作业标记为数值测试失败；应先统一 `mkdisks` 接口语义，再重新运行矩阵。
+# B8 比较参数记录
+
+B8 使用 `GRASP_ASF_SELECTION` 覆盖 ASF 块选择。当前 module 为 `NNNP=2990`，
+原始归档为 `NNNP=590`，比较时使用 `GRASP_ALLOW_RADIAL_GRID_DIFFERENCE=1`。
+状态集合改变时使用 `GRASP_ALLOW_LEVEL_DIFFERENCES=1`，比较器只比较共有能级，
+并报告当前/参考独有能级；CSF 数量仍必须严格匹配。

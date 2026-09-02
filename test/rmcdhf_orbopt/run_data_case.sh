@@ -18,19 +18,33 @@ if ! [[ $nprocs =~ ^[1-9][0-9]*$ ]]; then
     echo "nprocs must be a positive integer" >&2
     exit 2
 fi
-if [[ -e $output_dir ]]; then
-    echo "output directory already exists: $output_dir" >&2
-    exit 2
-fi
 if [[ $initial_wave != estimate && $initial_wave != archived ]]; then
     echo "initial wave must be 'estimate' or 'archived'" >&2
     exit 2
 fi
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+storage_root=$(realpath -m "$repo_root/../data/rmcdhf_test_data")
+data_root=$storage_root/inputs
+results_root=$storage_root/results
+mkdir -p "$results_root"
+if [[ $output_dir != /* ]]; then
+    output_dir=$results_root/$output_dir
+fi
+output_dir=$(realpath -m "$output_dir")
+case "$output_dir" in
+    "$results_root"/*) ;;
+    *)
+        echo "output directory must be below $results_root: $output_dir" >&2
+        exit 2
+        ;;
+esac
+if [[ -e $output_dir ]]; then
+    echo "output directory already exists: $output_dir" >&2
+    exit 2
+fi
 rmcdhf_bindir=${GRASP_RMCDHF_MPI_BINDIR:-${GRASP_BINDIR:-$repo_root/build-debug/bin}}
 graspkit_tools=${GRASPKITTOOLS:-$repo_root/../graspkit-tools}
 graspkit_python=${GRASPKIT_PYTHON:-$graspkit_tools/.venv/bin/python}
-data_root=$repo_root/test/data
 max_stage=2
 asf_selection=$'1-2\n1\n1-3\n1\n1-2'
 isodata_source=
@@ -155,6 +169,9 @@ if ! [[ $stage =~ ^[1-9][0-9]*$ ]] || (( stage > max_stage )); then
     exit 2
 fi
 level_weight=${GRASP_LEVEL_WEIGHT:-$level_weight}
+if [[ -n ${GRASP_ASF_SELECTION:-} ]]; then
+    asf_selection=$GRASP_ASF_SELECTION
+fi
 if [[ $level_weight != 1 && $level_weight != 5 ]]; then
     echo "GRASP_LEVEL_WEIGHT must be 1 (equal) or 5 (statistical)" >&2
     exit 2
@@ -169,8 +186,7 @@ varied=${!varied_name}
 
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
-mpi_tmp=$output_dir/mpi_tmp
-mkdir "$mpi_tmp"
+mpi_tmp=/home/workstation2/caltmp
 
 if [[ -z $isodata_source ]]; then
     isodata_source=$source_dir/isodata
@@ -230,6 +246,17 @@ if [[ $mode == balanced ]]; then
 fi
 
 cd "$output_dir"
+mkdisks "$nprocs" "$mpi_tmp"
+expected_disk="'$output_dir'"
+actual_disk=$(head -n 1 disks)
+if [[ $actual_disk != "$expected_disk" ]]; then
+    echo "invalid disks serial I/O directory: expected $expected_disk, got $actual_disk" >&2
+    exit 2
+fi
+if [[ ! -f rcsf.inp ]]; then
+    echo "missing rcsf.inp in calculation directory: $output_dir" >&2
+    exit 2
+fi
 printf 'y\n' > rangular.stdin
 mpirun -n "$nprocs" rangular_mpi \
     < rangular.stdin > rangular.stdout 2>&1
@@ -267,6 +294,9 @@ fi
 # level table consumed by graspkit-tools.
 result_name=${prefix}as${stage}
 rsave "$result_name" > rsave.stdout 2>&1
+if [[ ! -f rmcdhf.sum && -f "$result_name.sum" ]]; then
+    cp "$result_name.sum" rmcdhf.sum
+fi
 printf '%s\nn\ny\ny\n' "$result_name" | jj2lsj > jj2lsj.stdout 2>&1
 "${rhfs_launcher[@]}" "$result_name" --nonci > rhfs.stdout 2>&1
 rlevels "$result_name.m" | tee "$result_name.level"
@@ -298,6 +328,12 @@ fi
 comparison_args=()
 if [[ $mode == minus_only || $mode == balanced ]]; then
     comparison_args+=(--allow-energy-differences)
+fi
+if [[ ${GRASP_ALLOW_RADIAL_GRID_DIFFERENCE:-0} == 1 ]]; then
+    comparison_args+=(--allow-radial-grid-difference)
+fi
+if [[ ${GRASP_ALLOW_LEVEL_DIFFERENCES:-0} == 1 ]]; then
+    comparison_args+=(--allow-level-differences)
 fi
 python3 "$repo_root/test/rmcdhf_orbopt/compare_sum.py" \
     "$output_dir/rmcdhf.sum" "$output_dir/archived.sum" \

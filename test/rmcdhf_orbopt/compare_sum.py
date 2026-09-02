@@ -45,6 +45,12 @@ def main() -> int:
         action="store_true",
         help="report energy differences without treating them as a failure",
     )
+    parser.add_argument(
+        "--allow-radial-grid-difference",
+        action="store_true",
+        help="report a known NNNP radial-grid difference without treating it as a failure",
+    )
+    parser.add_argument("--allow-level-differences", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -52,11 +58,19 @@ def main() -> int:
         reference_csf, reference_grid, reference_levels = parse(args.reference)
         if current_csf != reference_csf:
             raise ValueError(f"CSF count differs: {current_csf} vs {reference_csf}")
-        if current_levels.keys() != reference_levels.keys():
+        if current_grid != reference_grid and not args.allow_radial_grid_difference:
+            raise ValueError(
+                f"radial grid differs: {current_grid} vs {reference_grid}; "
+                "use --allow-radial-grid-difference only for a documented NNNP change"
+            )
+        if current_levels.keys() != reference_levels.keys() and not args.allow_level_differences:
             raise ValueError("level labels or ordering differ")
+        common_keys = current_levels.keys() & reference_levels.keys()
+        if not common_keys:
+            raise ValueError("no common level labels")
         max_delta = 0.0
         max_delta_key: tuple[int, str, str] | None = None
-        for key in current_levels:
+        for key in common_keys:
             left, right = current_levels[key], reference_levels[key]
             delta = abs(left - right)
             if delta > max_delta:
@@ -73,7 +87,12 @@ def main() -> int:
     print(f"csfs,{current_csf},{reference_csf},match")
     grid_status = "match" if current_grid == reference_grid else "different"
     print(f"radial_grid_points,{current_grid},{reference_grid},{grid_status}")
-    print(f"levels,{len(current_levels)},{len(reference_levels)},match")
+    level_status = "match" if current_levels.keys() == reference_levels.keys() else "different_allowed"
+    print(f"levels,{len(current_levels)},{len(reference_levels)},{level_status}")
+    if current_levels.keys() != reference_levels.keys():
+        print(f"levels_common,{len(current_levels.keys() & reference_levels.keys())}")
+        print(f"levels_only_current,{len(current_levels.keys() - reference_levels.keys())}")
+        print(f"levels_only_reference,{len(reference_levels.keys() - current_levels.keys())}")
     print(f"max_abs_energy_delta_hartree,{max_delta:.16e}")
     if max_delta_key is not None:
         level, j_value, parity = max_delta_key
