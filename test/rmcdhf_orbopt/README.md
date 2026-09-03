@@ -21,6 +21,12 @@ The runner sets `OMP_NUM_THREADS=1` and `OPENBLAS_NUM_THREADS=1`, because the
 FlexiBLAS-managed OpenBLAS backend is OpenMP-enabled. Override both with
 `GRASP_OMP_THREADS` only when deliberately testing hybrid MPI/OpenMP runs.
 
+On the 48-core reference node, production-scale RMCDHF jobs must use 48 MPI
+ranks with `GRASP_OMP_THREADS=1`. The RMCDHF workload is primarily distributed
+by MPI; `4 ranks × 12 BLAS threads` was observed to use only about 8% total CPU
+in some phases. Runs with 1, 2, or 4 ranks are process-count repeatability
+diagnostics, not production performance configurations.
+
 ```sh
 bash test/rmcdhf_orbopt/run_data_case.sh \
   ni_i optimized ni-i-as2 4 estimate 2
