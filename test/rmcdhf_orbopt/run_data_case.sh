@@ -270,8 +270,21 @@ fi
 printf 'y\n%s\n%s\n%s\n\n100\n' \
     "$asf_selection" "$level_weight" "$varied" > rmcdhf.stdin
 set +e
-mpirun -n "$nprocs" "$rmcdhf_bindir/rmcdhf_mpi" \
-    < rmcdhf.stdin > rmcdhf.stdout 2>&1
+rmcdhf_timeout=${GRASP_RMCDHF_TIMEOUT:-}
+rmcdhf_kill_after=${GRASP_RMCDHF_KILL_AFTER:-30s}
+if [[ -n $rmcdhf_timeout ]]; then
+    # GNU timeout creates a separate process group for mpirun.  On timeout it
+    # terminates the launcher and every rank, then escalates to KILL after the
+    # grace period.  This also handles MPI launchers that hang while reaping
+    # ranks after an expected ERROR STOP.
+    timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
+        "$rmcdhf_timeout" mpirun -n "$nprocs" \
+        "$rmcdhf_bindir/rmcdhf_mpi" \
+        < rmcdhf.stdin > rmcdhf.stdout 2>&1
+else
+    mpirun -n "$nprocs" "$rmcdhf_bindir/rmcdhf_mpi" \
+        < rmcdhf.stdin > rmcdhf.stdout 2>&1
+fi
 rmcdhf_status=$?
 set -e
 printf '%s\n' "$rmcdhf_status" > rmcdhf.exitcode

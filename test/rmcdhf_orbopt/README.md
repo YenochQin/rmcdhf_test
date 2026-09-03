@@ -151,6 +151,13 @@ Guard thresholds are configured with `GRASP_MIN_ORBITAL_OVERLAP`,
 `GRASP_MAX_REJECTS_PER_ORBITAL`. Expected-failure mode preserves the trace and
 records the real MPI exit status in `rmcdhf.exitcode`.
 
+Set `GRASP_RMCDHF_TIMEOUT` (for example `30m`) for tests that deliberately
+exercise MPI failure paths. The runner uses GNU `timeout` to isolate the MPI
+launcher in its own process group, sends TERM to the whole group at the limit,
+and sends KILL after `GRASP_RMCDHF_KILL_AFTER` (default `30s`). A forced timeout
+is recorded as exit status 124 and is accepted only when
+`GRASP_EXPECT_RMCDHF_FAILURE=1` is also set.
+
 An existing output directory is rejected to prevent accidental data loss.
 
 ## 后续测试参数约定

@@ -22,12 +22,20 @@ mkdir -p $out
 run_case() {
   tag=$1; reject_nodes=$2
   set +e
-  env GRASP_ORBITAL_DAMPING=-0.5 GRASP_ORBITAL_GUARD=1 \
-    GRASP_MIN_ORBITAL_OVERLAP=0 GRASP_MAX_RADIUS_RATIO=100 \
-    GRASP_REJECT_NODE_CHANGE="$reject_nodes" GRASP_MAX_REJECTS_PER_ORBITAL=2 \
-    GRASP_ALLOW_RADIAL_GRID_DIFFERENCE=1 GRASP_EXPECT_RMCDHF_FAILURE=1 \
-    GRASP_OMP_THREADS=12 \
-    bash test/rmcdhf_orbopt/run_data_case.sh ni_i balanced "$out/$tag" 4 estimate 2
+  common_env=(
+    GRASP_ORBITAL_DAMPING=-0.5 GRASP_ORBITAL_GUARD=1
+    GRASP_MIN_ORBITAL_OVERLAP=0 GRASP_MAX_RADIUS_RATIO=100
+    GRASP_REJECT_NODE_CHANGE="$reject_nodes" GRASP_MAX_REJECTS_PER_ORBITAL=2
+    GRASP_ALLOW_RADIAL_GRID_DIFFERENCE=1 GRASP_OMP_THREADS=12
+  )
+  if [[ $reject_nodes == 1 ]]; then
+    env "${common_env[@]}" GRASP_EXPECT_RMCDHF_FAILURE=1 \
+      GRASP_RMCDHF_TIMEOUT=5m GRASP_RMCDHF_KILL_AFTER=30s \
+      bash test/rmcdhf_orbopt/run_data_case.sh ni_i balanced "$out/$tag" 4 estimate 2
+  else
+    env "${common_env[@]}" \
+      bash test/rmcdhf_orbopt/run_data_case.sh ni_i balanced "$out/$tag" 4 estimate 2
+  fi
   rc=$?
   set -e
   printf '%s,%s\n' "$tag" "$rc" >> "$out/exitcodes.csv"
