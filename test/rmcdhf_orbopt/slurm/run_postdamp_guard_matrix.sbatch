@@ -24,12 +24,20 @@ validate=$root/rmcdhf_test/test/rmcdhf_orbopt/validate_postdamp_guard.py
 
 run_case() {
   tag=$1; family=$2; damping=$3; guard_mode=$4
+  set +e
+  expected=0
+  [[ $family == ni_i ]] && expected=1
   env GRASP_ORBITAL_DAMPING="$damping" GRASP_ORBITAL_GUARD=1 \
     GRASP_GUARD_AFTER_DAMPING="$guard_mode" GRASP_MIN_ORBITAL_OVERLAP=0 \
     GRASP_MAX_RADIUS_RATIO=100 GRASP_REJECT_NODE_CHANGE=1 \
     GRASP_MAX_REJECTS_PER_ORBITAL=2 GRASP_ALLOW_RADIAL_GRID_DIFFERENCE=1 \
     GRASP_OMP_THREADS=12 GRASP_RMCDHF_TIMEOUT=30m \
+    GRASP_ABORT_ON_ORBOPT_ERROR=1 GRASP_EXPECT_RMCDHF_FAILURE="$expected" \
     bash "$runner" "$family" balanced "$out/$tag" 4 estimate 2
+  rc=$?
+  set -e
+  printf '%s,%s\n' "$tag" "$rc" >> "$out/exitcodes.csv"
+  if [[ $family == ni_ca_like && $rc -ne 0 ]]; then exit "$rc"; fi
   python3 "$validate" "$out/$tag/orbopt_trace.csv" > "$out/$tag/guard_validation.csv"
 }
 
