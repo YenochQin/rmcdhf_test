@@ -31,6 +31,7 @@ run_case() {
   if [[ $reject_nodes == 1 ]]; then
     env "${common_env[@]}" GRASP_EXPECT_RMCDHF_FAILURE=1 \
       GRASP_RMCDHF_TIMEOUT=5m GRASP_RMCDHF_KILL_AFTER=30s \
+      GRASP_ABORT_ON_ORBOPT_ERROR=1 \
       bash test/rmcdhf_orbopt/run_data_case.sh ni_i balanced "$out/$tag" 4 estimate 2
   else
     env "${common_env[@]}" \

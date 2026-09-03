@@ -157,6 +157,9 @@ launcher in its own process group, sends TERM to the whole group at the limit,
 and sends KILL after `GRASP_RMCDHF_KILL_AFTER` (default `30s`). A forced timeout
 is recorded as exit status 124 and is accepted only when
 `GRASP_EXPECT_RMCDHF_FAILURE=1` is also set.
+For orbital-guard expected failures, `GRASP_ABORT_ON_ORBOPT_ERROR=1` additionally
+terminates the launcher as soon as the rejection-limit marker appears in
+`rmcdhf.stdout`, instead of waiting for the timeout.
 
 An existing output directory is rejected to prevent accidental data loss.
 

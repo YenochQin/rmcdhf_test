@@ -277,10 +277,28 @@ if [[ -n $rmcdhf_timeout ]]; then
     # terminates the launcher and every rank, then escalates to KILL after the
     # grace period.  This also handles MPI launchers that hang while reaping
     # ranks after an expected ERROR STOP.
-    timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
-        "$rmcdhf_timeout" mpirun -n "$nprocs" \
-        "$rmcdhf_bindir/rmcdhf_mpi" \
-        < rmcdhf.stdin > rmcdhf.stdout 2>&1
+    if [[ ${GRASP_ABORT_ON_ORBOPT_ERROR:-0} == 1 ]]; then
+        timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
+            "$rmcdhf_timeout" mpirun -n "$nprocs" \
+            "$rmcdhf_bindir/rmcdhf_mpi" \
+            < rmcdhf.stdin > rmcdhf.stdout 2>&1 &
+        launcher_pid=$!
+        while kill -0 "$launcher_pid" 2>/dev/null; do
+            if grep -Eq 'ERROR STOP ORBOPT|rejection limit exceeded' rmcdhf.stdout 2>/dev/null; then
+                # TERM the timeout wrapper; it forwards the signal to mpirun
+                # and its process group, preventing a PRRTE reap hang.
+                kill -TERM "$launcher_pid" 2>/dev/null || true
+                break
+            fi
+            sleep 1
+        done
+        wait "$launcher_pid"
+    else
+        timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
+            "$rmcdhf_timeout" mpirun -n "$nprocs" \
+            "$rmcdhf_bindir/rmcdhf_mpi" \
+            < rmcdhf.stdin > rmcdhf.stdout 2>&1
+    fi
 else
     mpirun -n "$nprocs" "$rmcdhf_bindir/rmcdhf_mpi" \
         < rmcdhf.stdin > rmcdhf.stdout 2>&1
