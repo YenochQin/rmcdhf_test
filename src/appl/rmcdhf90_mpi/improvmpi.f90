@@ -79,7 +79,7 @@
       INTEGER :: ifound, ind_buf, K
       INTEGER :: NODES_OLD, NODES_CANDIDATE, MF_OLD
       INTEGER :: MTP0_OLD
-      INTEGER :: REJECT_COUNT, INV_OLD
+      INTEGER :: REJECT_COUNT, INV_OLD, NSIC_OLD, METHOD_OLD
       REAL(DOUBLE) :: ED1, GAMAJ, ED2, EOLD, WTAEV, DNORM, DNFAC
       REAL(DOUBLE) :: P_SWAP, Q_SWAP
       REAL(DOUBLE) :: DEL1, DEL2, ODAMPJ
@@ -114,7 +114,8 @@
       PZ_OLD = PZ(J)
       SCNSTY_OLD = SCNSTY(J)
       ODAMP_OLD = ODAMP(J)
-      INV_OLD = INV
+      NSIC_OLD = NSIC
+      METHOD_OLD = METHOD(J)
       ODAMPJ = 0.D0
 !
 !   C Froese Fischer's parameters IPR, ED1, ED2 are set and
@@ -156,6 +157,7 @@
 !        ndcof = ndcof_buffer
 !      endif
       INV = 0
+      INV_OLD = INV
 !cjb MPI_ALLREDUCE DA
 !      if (ndcof.gt.0) then
 !         call alloc(pda_buffer, ndcof, 8)
@@ -357,6 +359,8 @@
                PZ(J) = PZ_OLD
                SCNSTY(J) = SCNSTY_OLD
                ODAMP(J) = ODAMP_OLD
+               NSIC = NSIC_OLD
+               METHOD(J) = METHOD_OLD
                INV = INV_OLD
             ENDIF
             ENERGY_CANDIDATE = E(J)
