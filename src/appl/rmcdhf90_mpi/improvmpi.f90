@@ -38,7 +38,7 @@
             ENABLE_ORBITAL_GUARD, MIN_ORBITAL_OVERLAP,             &
             MAX_RADIUS_RATIO, REJECT_NODE_CHANGE,                  &
             RECORD_ORBITAL_REJECTION, CLEAR_ORBITAL_REJECTIONS,    &
-            STRICT_METHOD3
+            STRICT_METHOD3, GUARD_AFTER_DAMPING
       USE ORBOPT_METRICS_C, ONLY: CALCULATE_ORBITAL_METRICS
       USE ORBOPT_METRICS_C, ONLY: CHECK_ORBITAL_QUALITY
       USE ORBOPT_TRACE_C, ONLY: TRACE_ORBITAL_UPDATE,               &
@@ -78,12 +78,14 @@
       INTEGER :: I_MPI, ndcof_max, ntot, i_last, iproc, ndcip, jproc
       INTEGER :: ifound, ind_buf, K
       INTEGER :: NODES_OLD, NODES_CANDIDATE, MF_OLD
-      INTEGER :: REJECT_COUNT
+      INTEGER :: MTP0_OLD
+      INTEGER :: REJECT_COUNT, INV_OLD
       REAL(DOUBLE) :: ED1, GAMAJ, ED2, EOLD, WTAEV, DNORM, DNFAC
+      REAL(DOUBLE) :: P_SWAP, Q_SWAP
       REAL(DOUBLE) :: DEL1, DEL2, ODAMPJ
       REAL(DOUBLE) :: CANDIDATE_NORM, OLD_NORM, ORBITAL_OVERLAP
       REAL(DOUBLE) :: RADIUS_OLD, RADIUS_CANDIDATE
-      REAL(DOUBLE) :: PZ_OLD, SCNSTY_OLD, ENERGY_CANDIDATE
+      REAL(DOUBLE) :: PZ_OLD, SCNSTY_OLD, ODAMP_OLD, ENERGY_CANDIDATE
       LOGICAL :: FAIL, FIRST, REJECT_CANDIDATE, REJECT_LIMIT
       LOGICAL :: FALLBACK
       CHARACTER(LEN=128) :: REJECT_DETAIL, QUALITY_DETAIL
@@ -108,8 +110,11 @@
       FALLBACK = .FALSE.
       EOLD = E(J)
       MF_OLD = MF(J)
+      MTP0_OLD = MTP0
       PZ_OLD = PZ(J)
       SCNSTY_OLD = SCNSTY(J)
+      ODAMP_OLD = ODAMP(J)
+      INV_OLD = INV
       ODAMPJ = 0.D0
 !
 !   C Froese Fischer's parameters IPR, ED1, ED2 are set and
@@ -315,6 +320,45 @@
               MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO,               &
               REJECT_NODE_CHANGE, REJECT_CANDIDATE, QUALITY_DETAIL)
          IF (REJECT_CANDIDATE) THEN
+            IF (GUARD_AFTER_DAMPING) THEN
+!              Try the normal damping operation before rejecting the raw
+!              candidate.  DAMPOR swaps P/PF, so a failed post-damp check can
+!              be rolled back by swapping them back and restoring scalars.
+               IF (SCNSTY(J) > ACCY) THEN
+                  CALL DAMPCK (IPR, J, ED1, ED2)
+                  ODAMPJ = DABS(ODAMP(J))
+               ELSE
+                  ODAMPJ = 0.D0
+               ENDIF
+               CALL DAMPOR (J, INV, ODAMPJ)
+               CALL CALCULATE_ORBITAL_METRICS(J, CANDIDATE_NORM,  &
+                    OLD_NORM, ORBITAL_OVERLAP, RADIUS_OLD,        &
+                    RADIUS_CANDIDATE, NODES_OLD, NODES_CANDIDATE)
+               CALL CHECK_ORBITAL_QUALITY(ORBITAL_OVERLAP,        &
+                    RADIUS_OLD, RADIUS_CANDIDATE, NODES_OLD,      &
+                    NODES_CANDIDATE, MIN_ORBITAL_OVERLAP,         &
+                    MAX_RADIUS_RATIO, REJECT_NODE_CHANGE,        &
+                    REJECT_CANDIDATE, QUALITY_DETAIL)
+               IF (.NOT. REJECT_CANDIDATE) THEN
+                  CALL CLEAR_ORBITAL_REJECTIONS(J)
+                  GOTO 900
+               ENDIF
+!              Restore the pre-damping workspace and scalar state.
+               DO I = 1, MAX(MTP0, MF(J))
+                  P_SWAP = P(I)
+                  P(I) = PF(I,J)
+                  PF(I,J) = P_SWAP
+                  Q_SWAP = Q(I)
+                  Q(I) = QF(I,J)
+                  QF(I,J) = Q_SWAP
+               END DO
+               MF(J) = MF_OLD
+               MTP0 = MTP0_OLD
+               PZ(J) = PZ_OLD
+               SCNSTY(J) = SCNSTY_OLD
+               ODAMP(J) = ODAMP_OLD
+               INV = INV_OLD
+            ENDIF
             ENERGY_CANDIDATE = E(J)
             CALL RECORD_ORBITAL_REJECTION(J, REJECT_COUNT,         &
                                            REJECT_LIMIT)
@@ -351,6 +395,7 @@
          ODAMPJ = 0.D0                           ! take the whole new orbital
       ENDIF
       CALL DAMPOR (J, INV, ODAMPJ)
+  900 CONTINUE
       CALL CLEAR_ORBITAL_REJECTIONS(J)
       IF (TRACE_ORBOPT) THEN
 !        DAMPOR leaves the preceding accepted orbital in P/Q and the

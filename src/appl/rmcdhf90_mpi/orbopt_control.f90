@@ -13,6 +13,7 @@
       LOGICAL :: WARN_UNBALANCED_PAIR = .TRUE.
       LOGICAL :: REQUIRE_BALANCED_PAIR = .FALSE.
       LOGICAL :: ENABLE_ORBITAL_GUARD = .FALSE.
+      LOGICAL :: GUARD_AFTER_DAMPING = .FALSE.
       LOGICAL :: STRICT_SCF_CONVERGENCE = .FALSE.
       LOGICAL :: DEFER_ORTHOGONALIZATION = .FALSE.
       LOGICAL :: STRICT_METHOD3 = .FALSE.
@@ -37,6 +38,8 @@
                                REQUIRE_BALANCED_PAIR)
          CALL READ_LOGICAL_ENV('GRASP_ORBITAL_GUARD',               &
                                ENABLE_ORBITAL_GUARD)
+         CALL READ_LOGICAL_ENV('GRASP_GUARD_AFTER_DAMPING',         &
+                               GUARD_AFTER_DAMPING)
          CALL READ_LOGICAL_ENV('GRASP_STRICT_SCF',                  &
                                STRICT_SCF_CONVERGENCE)
          CALL READ_LOGICAL_ENV('GRASP_DEFER_ORTHY',                 &
@@ -86,6 +89,8 @@
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(ENABLE_ORBITAL_GUARD, 1, MPI_LOGICAL, 0,       &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(GUARD_AFTER_DAMPING, 1, MPI_LOGICAL, 0,       &
+                     MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(STRICT_SCF_CONVERGENCE, 1, MPI_LOGICAL, 0,     &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(DEFER_ORTHOGONALIZATION, 1, MPI_LOGICAL, 0,    &
@@ -106,11 +111,13 @@
 
       IF (myid == 0 .AND. (TRACE_ORBOPT .OR. SAVE_RWFN_ITERATIONS .OR. &
           REQUIRE_BALANCED_PAIR .OR. ENABLE_ORBITAL_GUARD .OR.     &
+          GUARD_AFTER_DAMPING .OR.                                  &
           STRICT_SCF_CONVERGENCE .OR. DEFER_ORTHOGONALIZATION .OR. &
           STRICT_METHOD3)) THEN
-         WRITE (*,'(A,7(1X,L1))') 'ORBOPT controls:',               &
+         WRITE (*,'(A,8(1X,L1))') 'ORBOPT controls:',               &
             TRACE_ORBOPT, REQUIRE_BALANCED_PAIR,                   &
-            ENABLE_ORBITAL_GUARD, STRICT_SCF_CONVERGENCE,          &
+            ENABLE_ORBITAL_GUARD, GUARD_AFTER_DAMPING,              &
+            STRICT_SCF_CONVERGENCE,                                 &
             SAVE_RWFN_ITERATIONS, DEFER_ORTHOGONALIZATION,         &
             STRICT_METHOD3
       ENDIF
