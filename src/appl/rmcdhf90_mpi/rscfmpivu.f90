@@ -51,7 +51,9 @@
        USE mpi_C
       USE fixd_C, ONLY: LFIX
       USE orthct_C, ONLY: ORTHST
-      USE orb_C, ONLY: NW
+      USE orb_C, ONLY: NW, NP, NAK
+      USE node_C, ONLY: NNODEP
+      USE wave_C, ONLY: MF
       USE scf_C, ONLY: METHOD
       USE ORBOPT_CONTROL_C
 !GG po to isimti
@@ -79,7 +81,7 @@
 !-----------------------------------------------
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
-      INTEGER :: NCORE1, NCOUNT1, lenperm, lentmp
+      INTEGER :: NCORE1, NCOUNT1, lenperm, lentmp, J
       LOGICAL :: EOL, YES
       CHARACTER, DIMENSION(NBLK0) :: IDBLK*8
 !      CHARACTER (LEN = *) :: host
@@ -155,6 +157,15 @@
       if(myid == 0) file1 = permdir(1:lenperm) // '/isodata'
       if(myid == 0) file2 = permdir(1:lenperm) // '/rwfn.inp'
       CALL GETSCDmpi (EOL, idblk, file1, file2 )
+      IF (MYID == 0 .AND. TRACE_INITIAL_ORBITALS) THEN
+         WRITE (734,'(A)') 'INITIAL_ORBITALS_AFTER_GETSCD'
+         WRITE (734,'(A)') 'index,np,nak,nnodep,mf'
+         DO J = 1, NW
+            WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
+                 NAK(J), ',', NNODEP(J), ',', MF(J)
+         END DO
+         FLUSH(734)
+      END IF
       IF (DEFER_ORTHOGONALIZATION) ORTHST = .FALSE.
       IF (STRICT_METHOD3) THEN
          WHERE (.NOT.LFIX(:NW)) METHOD(:NW) = 3
