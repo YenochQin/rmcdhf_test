@@ -35,7 +35,15 @@
 !-----------------------------------------------
       INTEGER, DIMENSION(NNNP) :: LCEXT
       INTEGER :: NEXT, I, LOC, NSTPS
+      INTEGER :: TRACE_STATUS
+      CHARACTER(LEN=8) :: TRACE_ENV
+      LOGICAL, SAVE :: TRACE_COUNT = .FALSE., TRACE_INIT = .FALSE.
       REAL(DOUBLE) :: EXT, EMX, ABFRI, TEST, THRESE, ABLCL
+      IF (.NOT. TRACE_INIT) THEN
+         CALL GET_ENVIRONMENT_VARIABLE('GRASP_TRACE_COUNT', TRACE_ENV, STATUS=TRACE_STATUS)
+         TRACE_COUNT = TRACE_STATUS == 0 .AND. (TRACE_ENV(1:1) == '1' .OR. TRACE_ENV(1:1) == 'y')
+         TRACE_INIT = .TRUE.
+      END IF
 !-----------------------------------------------
 !
 !
@@ -97,6 +105,10 @@
 !   sign of the function at this location
 !
       SGN = SIGN(1.0D00,FR(LCEXT(1)))
+      IF (TRACE_COUNT .AND. MTPFR > 300) THEN
+         WRITE (734,'(A,I0,A,ES16.8,A,ES16.8,A,I0)') 'COUNT_TRACE mtp=', MTPFR, &
+              ' emx=', EMX, ' thre=', THRESE, ' nodes=', NNCFF
+      END IF
 !
       RETURN
       END SUBROUTINE COUNT
