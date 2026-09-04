@@ -40,6 +40,7 @@
       USE wave_C
       USE POTE_C
       USE MPI_C
+      USE ORBOPT_CONTROL_C, ONLY: TRACE_ORBOPT
 !-----------------------------------------------
 !   I n t e r f a c e   B l o c k s
 !-----------------------------------------------
@@ -313,6 +314,12 @@
 !   is never enforced on the small component
 !
       CALL COUNT (P, MTP0, NNP, SGN)
+      IF (TRACE_ORBOPT .AND. MYID == 0) THEN
+         WRITE (*,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') &
+            'ORBOPT SOLVE nodes: J=', J, ' NP=', NP(J), ' NAK=', NAK(J), &
+            ' expected=', NNODEP(J), ' counted=', NNP, ' MTP0=', MTP0, &
+            ' method=', METHOD(J)
+      ENDIF
 !
 !   DEBUG PRINTOUT
 !
