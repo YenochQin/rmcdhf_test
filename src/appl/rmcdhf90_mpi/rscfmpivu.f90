@@ -198,6 +198,18 @@
 
       CALL scfmpi (EOL, file1)
 
+      IF (MYID == 0 .AND. TRACE_INITIAL_ORBITALS) THEN
+         WRITE (734,'(A)') 'FINAL_ORBITALS_AFTER_SCF'
+         WRITE (734,'(A)') 'index,np,nak,nnodep,mf,final_nodes'
+         DO J = 1, NW
+            INITIAL_FR = PF(1:NNNP,J)
+            CALL COUNT(INITIAL_FR, MF(J), INITIAL_NODES, INITIAL_SGN)
+            WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
+                 NAK(J), ',', NNODEP(J), ',', MF(J), ',', INITIAL_NODES
+         END DO
+         FLUSH(734)
+      END IF
+
 !=======================================================================
 !  Execution finished; Statistics output
 !=======================================================================
