@@ -262,7 +262,8 @@ mpirun -n "$nprocs" rangular_mpi \
     < rangular.stdin > rangular.stdout 2>&1
 
 if [[ $initial_wave == estimate ]]; then
-    printf 'y\n1\nprevious.w\n*\n2\n*\n4\n*\n4\n' > rwfnestimate.stdin
+    rwfnestimate_method=${GRASP_RWFNESTIMATE_METHOD:-2}
+    printf 'y\n1\nprevious.w\n*\n%s\n*\n4\n*\n4\n' "$rwfnestimate_method" > rwfnestimate.stdin
     rwfnestimate \
         < rwfnestimate.stdin > rwfnestimate.stdout 2>&1
 fi
