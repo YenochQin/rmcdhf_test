@@ -306,6 +306,11 @@ fi
 rmcdhf_status=$?
 set -e
 printf '%s\n' "$rmcdhf_status" > rmcdhf.exitcode
+# Preserve the diagnostic unit written by rmcdhf_mpi before post-processing
+# tools (notably rsave) rename or remove auxiliary files.
+if [[ -f rmcdhf.log ]]; then
+    cp -f rmcdhf.log rmcdhf_diagnostic.log
+fi
 
 python3 "$repo_root/test/rmcdhf_orbopt/compare_rmcdhf.py" \
     "$output_dir/orbopt_trace.csv" > "$output_dir/orbopt_summary.csv"
