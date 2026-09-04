@@ -50,6 +50,7 @@
       USE parameter_def, ONLY: NNNP
       USE coun_C, ONLY: THRESH
       USE def_C, ONLY: ACCY
+      USE grid_C, ONLY: R
        USE core_C
        USE iounit_C
        USE mpi_C
@@ -87,7 +88,7 @@
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
       INTEGER :: NCORE1, NCOUNT1, lenperm, lentmp, J, INITIAL_NODES
-      INTEGER :: NODES_M10, NODES_M20, M10, M20
+      INTEGER :: NODES_M10, NODES_M20, M10, M20, I, NZ
       REAL(DOUBLE) :: INITIAL_SGN
       REAL(DOUBLE) :: INITIAL_FR(NNNP)
       LOGICAL :: EOL, YES
@@ -180,6 +181,18 @@
             WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
                  NAK(J), ',', NNODEP(J), ',', MF(J), ',', INITIAL_NODES, ',', &
                  NODES_M10, ',', NODES_M20
+         END DO
+         WRITE (734,'(A)') 'ZERO_CROSSINGS'
+         WRITE (734,'(A)') 'orbital,index,radius,p_left,p_right'
+         DO J = 1, NW
+            NZ = 0
+            DO I = 2, MF(J)
+               IF (PF(I-1,J)*PF(I,J) < 0.D0) THEN
+                  NZ = NZ + 1
+                  IF (NZ <= 12) WRITE (734,'(I0,A,I0,A,ES16.8,A,ES16.8,A,ES16.8)') &
+                     J, ',', I, ',', R(I), ',', PF(I-1,J), ',', PF(I,J)
+               END IF
+            END DO
          END DO
          FLUSH(734)
       END IF
