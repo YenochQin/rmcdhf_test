@@ -48,6 +48,8 @@
       USE default_C
       USE vast_kind_param, ONLY: DOUBLE
       USE parameter_def, ONLY: NNNP
+      USE coun_C, ONLY: THRESH
+      USE def_C, ONLY: ACCY
        USE core_C
        USE iounit_C
        USE mpi_C
@@ -163,6 +165,8 @@
       if(myid == 0) file1 = permdir(1:lenperm) // '/isodata'
       if(myid == 0) file2 = permdir(1:lenperm) // '/rwfn.inp'
       CALL GETSCDmpi (EOL, idblk, file1, file2 )
+      IF (COUNT_THRESH_OVERRIDE > 0.D0) THRESH = COUNT_THRESH_OVERRIDE
+      IF (ACCY_OVERRIDE > 0.D0) ACCY = ACCY_OVERRIDE
       IF (MYID == 0 .AND. TRACE_INITIAL_ORBITALS) THEN
          WRITE (734,'(A)') 'INITIAL_ORBITALS_AFTER_GETSCD'
          WRITE (734,'(A)') 'index,np,nak,nnodep,mf,initial_nodes,nodes_m10,nodes_m20'
