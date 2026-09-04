@@ -34,7 +34,7 @@ env "${common[@]}" GRASP_ORBITAL_GUARD=1 GRASP_GUARD_AFTER_DAMPING=1 \
   GRASP_MIN_ORBITAL_OVERLAP=0 GRASP_MAX_RADIUS_RATIO=100 \
   GRASP_REJECT_NODE_CHANGE=1 GRASP_MAX_REJECTS_PER_ORBITAL=2 \
   GRASP_ABORT_ON_ORBOPT_ERROR=1 GRASP_EXPECT_RMCDHF_FAILURE=1 \
-  GRASP_PREVIOUS_WAVE="$as1_wave" \ GRASP_RWFNESTIMATE_METHOD=3
+  GRASP_PREVIOUS_WAVE="$as1_wave" GRASP_RWFNESTIMATE_METHOD=3 \
   bash test/rmcdhf_orbopt/run_data_case.sh ni_i balanced "$out/as2" 12 estimate 2
 sha256sum "$out/as2/previous.w" > "$out/as2_previous_wave.sha256"
 cmp <(cut -d' ' -f1 "$out/as1_wave.sha256") \
