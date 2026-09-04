@@ -85,6 +85,7 @@
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
       INTEGER :: NCORE1, NCOUNT1, lenperm, lentmp, J, INITIAL_NODES
+      INTEGER :: NODES_M10, NODES_M20, M10, M20
       REAL(DOUBLE) :: INITIAL_SGN
       REAL(DOUBLE) :: INITIAL_FR(NNNP)
       LOGICAL :: EOL, YES
@@ -164,12 +165,17 @@
       CALL GETSCDmpi (EOL, idblk, file1, file2 )
       IF (MYID == 0 .AND. TRACE_INITIAL_ORBITALS) THEN
          WRITE (734,'(A)') 'INITIAL_ORBITALS_AFTER_GETSCD'
-         WRITE (734,'(A)') 'index,np,nak,nnodep,mf,initial_nodes'
+         WRITE (734,'(A)') 'index,np,nak,nnodep,mf,initial_nodes,nodes_m10,nodes_m20'
          DO J = 1, NW
             INITIAL_FR = PF(1:NNNP,J)
             CALL COUNT(INITIAL_FR, MF(J), INITIAL_NODES, INITIAL_SGN)
-            WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
-                 NAK(J), ',', NNODEP(J), ',', MF(J), ',', INITIAL_NODES
+            M10 = MAX(1, MF(J)-10)
+            M20 = MAX(1, MF(J)-20)
+            CALL COUNT(INITIAL_FR, M10, NODES_M10, INITIAL_SGN)
+            CALL COUNT(INITIAL_FR, M20, NODES_M20, INITIAL_SGN)
+            WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
+                 NAK(J), ',', NNODEP(J), ',', MF(J), ',', INITIAL_NODES, ',', &
+                 NODES_M10, ',', NODES_M20
          END DO
          FLUSH(734)
       END IF
