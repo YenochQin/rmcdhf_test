@@ -25,7 +25,7 @@ export GRASP_OMP_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 ranks=$GRASP_MPI_RANKS
 out=$root/data/rmcdhf_test_data/results/$GRASP_RESULT_TAG/np$ranks
 mkdir -p "${out:h}"
-start=$EPOCHSECONDS
+start=$(date +%s)
 env GRASP_ORBITAL_DAMPING=-0.5 GRASP_ORBITAL_GUARD=1 \
   GRASP_GUARD_AFTER_DAMPING=1 GRASP_MIN_ORBITAL_OVERLAP=0 \
   GRASP_MAX_RADIUS_RATIO=100 GRASP_REJECT_NODE_CHANGE=1 \
@@ -34,6 +34,7 @@ env GRASP_ORBITAL_DAMPING=-0.5 GRASP_ORBITAL_GUARD=1 \
   GRASP_OMP_THREADS=1 \
   bash test/rmcdhf_orbopt/run_data_case.sh ni_ca_like balanced \
     "$out" "$ranks" estimate 2
-elapsed=$((EPOCHSECONDS - start))
+finish=$(date +%s)
+elapsed=$((finish - start))
 printf 'ranks,%s\nelapsed_seconds,%s\nstatus,complete\n' \
   "$ranks" "$elapsed" > "$out/scaling_status.csv"
