@@ -9,6 +9,7 @@
       USE int_C, ONLY: p, q, mtp0
       USE tatb_C, ONLY: ta, mtp
       USE wave_C, ONLY: mf, pf, qf
+      USE coun_C, ONLY: COUNT_CONTEXT
       USE count_I
       USE quad_I
       IMPLICIT NONE
@@ -54,6 +55,7 @@
                     Q(2:MTP)*QF(2:MTP,J))*RP(2:MTP)
       CALL QUAD(OVERLAP)
 
+      COUNT_CONTEXT = J
       CALL COUNT(P(:NNNP), MTP0, NODES_CANDIDATE, SGN)
       CALL COUNT(PF(:NNNP,J), MF(J), NODES_OLD, SGN)
       END SUBROUTINE CALCULATE_ORBITAL_METRICS

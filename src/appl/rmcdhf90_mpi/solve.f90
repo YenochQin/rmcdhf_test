@@ -38,6 +38,7 @@
       USE scf_C
       USE tatb_C
       USE wave_C
+      USE coun_C, ONLY: COUNT_CONTEXT
       USE POTE_C
       USE MPI_C
       USE ORBOPT_CONTROL_C, ONLY: TRACE_ORBOPT
@@ -313,6 +314,7 @@
 !   oscillation, effective quantum number; note that node counting
 !   is never enforced on the small component
 !
+      COUNT_CONTEXT = J
       CALL COUNT (P, MTP0, NNP, SGN)
       IF (TRACE_ORBOPT .AND. MYID == 0) THEN
          WRITE (*,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') &
