@@ -4,4 +4,5 @@
 !...Modified by Charlotte Froese Fischer
 !                     Gediminas Gaigalas  10/05/17
       REAL(DOUBLE) :: THRESH
+      INTEGER :: COUNT_CONTEXT = 0
       END MODULE coun_C

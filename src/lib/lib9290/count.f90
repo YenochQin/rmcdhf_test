@@ -106,8 +106,8 @@
 !
       SGN = SIGN(1.0D00,FR(LCEXT(1)))
       IF (TRACE_COUNT .AND. MTPFR > 300) THEN
-         WRITE (734,'(A,I0,A,ES16.8,A,ES16.8,A,I0)') 'COUNT_TRACE mtp=', MTPFR, &
-              ' emx=', EMX, ' thre=', THRESE, ' nodes=', NNCFF
+         WRITE (734,'(A,I0,A,I0,A,ES16.8,A,ES16.8,A,I0)') 'COUNT_TRACE orbital=', &
+              COUNT_CONTEXT, ' mtp=', MTPFR, ' emx=', EMX, ' thre=', THRESE, ' nodes=', NNCFF
       END IF
 !
       RETURN

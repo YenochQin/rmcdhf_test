@@ -48,7 +48,7 @@
       USE default_C
       USE vast_kind_param, ONLY: DOUBLE
       USE parameter_def, ONLY: NNNP
-      USE coun_C, ONLY: THRESH
+      USE coun_C, ONLY: THRESH, COUNT_CONTEXT
       USE def_C, ONLY: ACCY
       USE grid_C, ONLY: R
        USE core_C
@@ -172,6 +172,7 @@
          WRITE (734,'(A)') 'INITIAL_ORBITALS_AFTER_GETSCD'
          WRITE (734,'(A)') 'index,np,nak,nnodep,mf,initial_nodes,nodes_m10,nodes_m20'
          DO J = 1, NW
+            COUNT_CONTEXT = J
             INITIAL_FR = PF(1:NNNP,J)
             CALL COUNT(INITIAL_FR, MF(J), INITIAL_NODES, INITIAL_SGN)
             M10 = MAX(1, MF(J)-10)
