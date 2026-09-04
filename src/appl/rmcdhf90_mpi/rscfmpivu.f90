@@ -47,6 +47,7 @@
 !-----------------------------------------------
       USE default_C
       USE vast_kind_param, ONLY: DOUBLE
+      USE parameter_def, ONLY: NNNP
        USE core_C
        USE iounit_C
        USE mpi_C
@@ -54,7 +55,7 @@
       USE orthct_C, ONLY: ORTHST
       USE orb_C, ONLY: NW, NP, NAK
       USE node_C, ONLY: NNODEP
-      USE wave_C, ONLY: MF
+      USE wave_C, ONLY: MF, PF
       USE scf_C, ONLY: METHOD
       USE ORBOPT_CONTROL_C
 !GG po to isimti
@@ -85,6 +86,7 @@
 !-----------------------------------------------
       INTEGER :: NCORE1, NCOUNT1, lenperm, lentmp, J, INITIAL_NODES
       REAL(DOUBLE) :: INITIAL_SGN
+      REAL(DOUBLE) :: INITIAL_FR(NNNP)
       LOGICAL :: EOL, YES
       CHARACTER, DIMENSION(NBLK0) :: IDBLK*8
 !      CHARACTER (LEN = *) :: host
@@ -164,7 +166,8 @@
          WRITE (734,'(A)') 'INITIAL_ORBITALS_AFTER_GETSCD'
          WRITE (734,'(A)') 'index,np,nak,nnodep,mf,initial_nodes'
          DO J = 1, NW
-            CALL COUNT(PF(:,J), MF(J), INITIAL_NODES, INITIAL_SGN)
+            INITIAL_FR = PF(1:NNNP,J)
+            CALL COUNT(INITIAL_FR, MF(J), INITIAL_NODES, INITIAL_SGN)
             WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
                  NAK(J), ',', NNODEP(J), ',', MF(J), ',', INITIAL_NODES
          END DO
