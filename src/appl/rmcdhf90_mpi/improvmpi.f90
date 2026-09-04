@@ -123,6 +123,7 @@
 !
     1 CONTINUE
       ED2 = E(J)
+      ED1 = PED(J)
 !
 !   Set up the exchange potential and arrays XU, XV as appropriate
 !
