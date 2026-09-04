@@ -45,7 +45,8 @@
 !-----------------------------------------------
 !   M o d u l e s
 !-----------------------------------------------
-       USE default_C
+      USE default_C
+      USE vast_kind_param, ONLY: DOUBLE
        USE core_C
        USE iounit_C
        USE mpi_C
@@ -69,6 +70,7 @@
       USE setmcp_I
       USE setcslmpi_I
       USE getscdmpi_I
+      USE count_I
       USE strsum_I
       USE setmix_I
       USE factt_I
@@ -81,7 +83,8 @@
 !-----------------------------------------------
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
-      INTEGER :: NCORE1, NCOUNT1, lenperm, lentmp, J
+      INTEGER :: NCORE1, NCOUNT1, lenperm, lentmp, J, INITIAL_NODES
+      REAL(DOUBLE) :: INITIAL_SGN
       LOGICAL :: EOL, YES
       CHARACTER, DIMENSION(NBLK0) :: IDBLK*8
 !      CHARACTER (LEN = *) :: host
@@ -159,10 +162,11 @@
       CALL GETSCDmpi (EOL, idblk, file1, file2 )
       IF (MYID == 0 .AND. TRACE_INITIAL_ORBITALS) THEN
          WRITE (734,'(A)') 'INITIAL_ORBITALS_AFTER_GETSCD'
-         WRITE (734,'(A)') 'index,np,nak,nnodep,mf'
+         WRITE (734,'(A)') 'index,np,nak,nnodep,mf,initial_nodes'
          DO J = 1, NW
-            WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
-                 NAK(J), ',', NNODEP(J), ',', MF(J)
+            CALL COUNT(PF(:,J), MF(J), INITIAL_NODES, INITIAL_SGN)
+            WRITE (734,'(I0,A,I0,A,I0,A,I0,A,I0,A,I0)') J, ',', NP(J), ',', &
+                 NAK(J), ',', NNODEP(J), ',', MF(J), ',', INITIAL_NODES
          END DO
          FLUSH(734)
       END IF
