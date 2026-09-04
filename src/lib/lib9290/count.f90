@@ -108,6 +108,11 @@
       IF (TRACE_COUNT .AND. MTPFR > 300) THEN
          WRITE (734,'(A,I0,A,I0,A,ES16.8,A,ES16.8,A,I0)') 'COUNT_TRACE orbital=', &
               COUNT_CONTEXT, ' mtp=', MTPFR, ' emx=', EMX, ' thre=', THRESE, ' nodes=', NNCFF
+         WRITE (734,'(A,I0)') 'COUNT_EXTREMA orbital=', COUNT_CONTEXT
+         DO I = 1, NEXT
+            IF (LCEXT(I) > 0) WRITE (734,'(I0,A,I0,A,ES16.8,A,ES16.8)') &
+                 I, ',', LCEXT(I), ',', R(LCEXT(I)), ',', ABS(FR(LCEXT(I)))
+         END DO
       END IF
 !
       RETURN
