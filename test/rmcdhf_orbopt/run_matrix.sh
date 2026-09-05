@@ -14,7 +14,7 @@ if [[ $profile != smoke && $profile != cl && $profile != full ]]; then
     exit 2
 fi
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-storage_root=$(realpath -m "$repo_root/data/rmcdhf_test_data")
+storage_root=$(realpath -m "$repo_root/../data/rmcdhf_test_data")
 results_root=$storage_root/results
 mkdir -p "$results_root"
 if [[ $output_root != /* ]]; then

@@ -23,7 +23,7 @@ if [[ $initial_wave != estimate && $initial_wave != archived ]]; then
     exit 2
 fi
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-storage_root=$(realpath -m "$repo_root/data/rmcdhf_test_data")
+storage_root=$(realpath -m "$repo_root/../data/rmcdhf_test_data")
 data_root=$storage_root/inputs
 results_root=$storage_root/results
 mkdir -p "$results_root"
