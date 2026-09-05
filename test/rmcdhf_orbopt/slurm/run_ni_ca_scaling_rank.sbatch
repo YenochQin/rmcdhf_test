@@ -20,7 +20,7 @@ export PATH=${GRASPKITTOOLS}/scripts:${PATH}
 unset VIRTUAL_ENV _OLD_VIRTUAL_PATH _OLD_VIRTUAL_PS1 _OLD_VIRTUAL_PYTHONHOME
 source ${GRASPKITTOOLS}/.venv/bin/activate
 cd $root/rmcdhf_test
-export GRASP_BINDIR=/tmp/rmcdhf-build-debug/bin
+export GRASP_BINDIR=${GRASP_BINDIR:-/tmp/rmcdhf-build-debug/bin}
 export GRASP_OMP_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 ranks=$GRASP_MPI_RANKS
 out=$root/data/rmcdhf_test_data/results/$GRASP_RESULT_TAG/np$ranks
