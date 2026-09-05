@@ -7,4 +7,4 @@
 #SBATCH --error=/home/workstation2/AppFiles/GraspKit-Workspace/data/rmcdhf_test_data/log/%j_%x.log
 export GRASP_REJECT_NODE_CHANGE=0
 export GRASP_RESULT_TAG=ni-guard-off-46mpi
-exec bash /home/workstation2/AppFiles/GraspKit-Workspace/rmcdhf_test/test/rmcdhf_orbopt/slurm/run_ni_as1_as2_chain_diagnostic.sbatch
+exec zsh /home/workstation2/AppFiles/GraspKit-Workspace/rmcdhf_test/test/rmcdhf_orbopt/slurm/run_ni_as1_as2_chain_diagnostic.sbatch

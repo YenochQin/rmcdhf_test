@@ -8,4 +8,4 @@
 export GRASP_REJECT_NODE_CHANGE=0
 export GRASP_DEFER_ORTHY=1
 export GRASP_RESULT_TAG=ni-defer-orthy-46mpi
-exec bash /home/workstation2/AppFiles/GraspKit-Workspace/rmcdhf_test/test/rmcdhf_orbopt/slurm/run_ni_as1_as2_chain_diagnostic.sbatch
+exec zsh /home/workstation2/AppFiles/GraspKit-Workspace/rmcdhf_test/test/rmcdhf_orbopt/slurm/run_ni_as1_as2_chain_diagnostic.sbatch
