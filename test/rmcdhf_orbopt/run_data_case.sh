@@ -206,7 +206,7 @@ fi
 
 source /usr/share/Modules/init/bash
 module load mpi/openmpi-x86_64
-module load "${GRASP_MODULE:-grasp/grasp_2990_NNNP}"
+module load "${GRASP_MODULE:-grasp/grasp_NNNP_1990}"
 if ! command -v rangular_mpi >/dev/null 2>&1; then
     echo "missing module-provided executable: rangular_mpi" >&2
     exit 2
@@ -241,6 +241,14 @@ export GRASP_TRACE_ORBOPT=1
 # each MPI rank single-threaded to avoid rank_count x core_count oversubscription.
 export OMP_NUM_THREADS=${GRASP_OMP_THREADS:-1}
 export OPENBLAS_NUM_THREADS=${GRASP_OMP_THREADS:-1}
+
+# The cluster's working launcher is srun/PMIx (see the archived Cl I
+# mcdhfmpi.sh).  Keep mpirun only as a non-Slurm fallback for local probes.
+if [[ -n ${SLURM_JOB_ID:-} ]]; then
+    grasp_mpi_launcher=(srun --mpi=pmix --cpu-bind=thread --ntasks="$nprocs")
+else
+    grasp_mpi_launcher=(mpirun -n "$nprocs")
+fi
 if [[ $mode == balanced ]]; then
     export GRASP_REQUIRE_BALANCED_PAIR=1
 fi
@@ -258,7 +266,7 @@ if [[ ! -f rcsf.inp ]]; then
     exit 2
 fi
 printf 'y\n' > rangular.stdin
-mpirun -n "$nprocs" rangular_mpi \
+"${grasp_mpi_launcher[@]}" rangular_mpi \
     < rangular.stdin > rangular.stdout 2>&1
 
 if [[ $initial_wave == estimate ]]; then
@@ -280,7 +288,7 @@ if [[ -n $rmcdhf_timeout ]]; then
     # ranks after an expected ERROR STOP.
     if [[ ${GRASP_ABORT_ON_ORBOPT_ERROR:-0} == 1 ]]; then
         timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
-            "$rmcdhf_timeout" mpirun -n "$nprocs" \
+            "$rmcdhf_timeout" "${grasp_mpi_launcher[@]}" \
             "$rmcdhf_bindir/rmcdhf_mpi" \
             < rmcdhf.stdin > rmcdhf.stdout 2>&1 &
         launcher_pid=$!
@@ -296,12 +304,12 @@ if [[ -n $rmcdhf_timeout ]]; then
         wait "$launcher_pid"
     else
         timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
-            "$rmcdhf_timeout" mpirun -n "$nprocs" \
+            "$rmcdhf_timeout" "${grasp_mpi_launcher[@]}" \
             "$rmcdhf_bindir/rmcdhf_mpi" \
             < rmcdhf.stdin > rmcdhf.stdout 2>&1
     fi
 else
-    mpirun -n "$nprocs" "$rmcdhf_bindir/rmcdhf_mpi" \
+    "${grasp_mpi_launcher[@]}" "$rmcdhf_bindir/rmcdhf_mpi" \
         < rmcdhf.stdin > rmcdhf.stdout 2>&1
 fi
 rmcdhf_status=$?
