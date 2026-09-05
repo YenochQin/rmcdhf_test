@@ -206,7 +206,7 @@ fi
 
 source /usr/share/Modules/init/bash
 module load mpi/openmpi-x86_64
-module load "${GRASP_MODULE:-grasp/grasp_NNNP_1990}"
+module load "${GRASP_MODULE:-grasp/grasp_2990_NNNP}"
 if ! command -v rangular_mpi >/dev/null 2>&1; then
     echo "missing module-provided executable: rangular_mpi" >&2
     exit 2
