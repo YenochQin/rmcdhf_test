@@ -186,7 +186,7 @@ varied=${!varied_name}
 
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
-mpi_tmp=/home/workstation2/caltmp
+mpi_tmp=${GRASP_MPI_TMP:-/home/workstation2/caltmp}
 
 if [[ -z $isodata_source ]]; then
     isodata_source=$source_dir/isodata
