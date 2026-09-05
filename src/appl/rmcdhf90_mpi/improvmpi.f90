@@ -225,7 +225,11 @@
                   endif
                enddo
             enddo
-            NDCOF = ndcof_max
+            ! NDCOF is the number of unique coefficients actually merged.
+            ! Using ndcof_max leaves trailing slots uninitialized when
+            ! ranks contribute different coefficient counts; DACON then
+            ! consumes those stale entries on the next orbital solve.
+            NDCOF = i_last
             call dalloc(nda_buffer,'nda_buffer','IMPROVmpi')
             call dalloc(da_buffer,'da_buffer','IMPROVMPI')
          endif
