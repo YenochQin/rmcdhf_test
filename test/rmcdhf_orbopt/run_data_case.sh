@@ -342,15 +342,21 @@ rsave "$result_name" > rsave.stdout 2>&1
 if [[ ! -f rmcdhf.sum && -f "$result_name.sum" ]]; then
     cp "$result_name.sum" rmcdhf.sum
 fi
+if [[ ! -f $graspkit_tools/pyscript/read_radial_wavefunction.py ]]; then
+    echo "missing radial-wavefunction converter: $graspkit_tools/pyscript/read_radial_wavefunction.py" >&2
+    exit 2
+fi
+if [[ ! -x $graspkit_python ]]; then
+    graspkit_python=python3
+fi
+"$graspkit_python" "$graspkit_tools/pyscript/read_radial_wavefunction.py" \
+    -f "$result_name.w"
 printf '%s\nn\ny\ny\n' "$result_name" | jj2lsj > jj2lsj.stdout 2>&1
 "${rhfs_launcher[@]}" "$result_name" --nonci > rhfs.stdout 2>&1
 rlevels "$result_name.m" | tee "$result_name.level"
 if [[ ! -f $graspkit_tools/pyscript/read_level_to_csv.py ]]; then
     echo "missing level converter: $graspkit_tools/pyscript/read_level_to_csv.py" >&2
     exit 2
-fi
-if [[ ! -x $graspkit_python ]]; then
-    graspkit_python=python3
 fi
 "$graspkit_python" "$graspkit_tools/pyscript/read_level_to_csv.py" \
     -f "$result_name.level" -lsj -gj \

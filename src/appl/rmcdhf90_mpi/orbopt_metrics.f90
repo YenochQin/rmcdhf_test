@@ -62,12 +62,13 @@
 
       SUBROUTINE CHECK_ORBITAL_QUALITY(OVERLAP, RADIUS_OLD,         &
             RADIUS_CANDIDATE, NODES_OLD, NODES_CANDIDATE,         &
-            MIN_OVERLAP, MAX_RADIUS_FACTOR, REJECT_NODES, REJECT, &
-            DETAIL)
+            EXPECTED_NODES, MIN_OVERLAP, MAX_RADIUS_FACTOR,        &
+            REJECT_NODES, REJECT, DETAIL)
       REAL(DOUBLE), INTENT(IN) :: OVERLAP, RADIUS_OLD
       REAL(DOUBLE), INTENT(IN) :: RADIUS_CANDIDATE, MIN_OVERLAP
       REAL(DOUBLE), INTENT(IN) :: MAX_RADIUS_FACTOR
       INTEGER, INTENT(IN) :: NODES_OLD, NODES_CANDIDATE
+      INTEGER, INTENT(IN) :: EXPECTED_NODES
       LOGICAL, INTENT(IN) :: REJECT_NODES
       LOGICAL, INTENT(OUT) :: REJECT
       CHARACTER(LEN=*), INTENT(OUT) :: DETAIL
@@ -91,10 +92,13 @@
          IF (LEN_TRIM(DETAIL) > 0) DETAIL = TRIM(DETAIL)//'+'
          DETAIL = TRIM(DETAIL)//'radius'
       ENDIF
-      IF (REJECT_NODES .AND. NODES_OLD /= NODES_CANDIDATE) THEN
+!     Node topology may legitimately change when optimization repairs an
+!     initial estimate with an extra node.  Reject departures from the
+!     Dirac orbital's required node count, rather than any old/new change.
+      IF (REJECT_NODES .AND. NODES_CANDIDATE /= EXPECTED_NODES) THEN
          REJECT = .TRUE.
          IF (LEN_TRIM(DETAIL) > 0) DETAIL = TRIM(DETAIL)//'+'
-         DETAIL = TRIM(DETAIL)//'nodes'
+         DETAIL = TRIM(DETAIL)//'nodes_expected'
       ENDIF
       END SUBROUTINE CHECK_ORBITAL_QUALITY
 

@@ -29,6 +29,7 @@
       USE grid_C
       USE int_C
       USE mpi_C
+      USE node_C, ONLY: NNODEP
       USE orb_C
       USE orthct_C
       USE scf_C
@@ -324,7 +325,7 @@
       IF (ENABLE_ORBITAL_GUARD) THEN
          CALL CHECK_ORBITAL_QUALITY(ORBITAL_OVERLAP, RADIUS_OLD,    &
               RADIUS_CANDIDATE, NODES_OLD, NODES_CANDIDATE,       &
-              MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO,               &
+              NNODEP(J), MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO,    &
               REJECT_NODE_CHANGE, REJECT_CANDIDATE, QUALITY_DETAIL)
          IF (REJECT_CANDIDATE) THEN
             IF (GUARD_AFTER_DAMPING) THEN
@@ -343,7 +344,7 @@
                     RADIUS_CANDIDATE, NODES_OLD, NODES_CANDIDATE)
                CALL CHECK_ORBITAL_QUALITY(ORBITAL_OVERLAP,        &
                     RADIUS_OLD, RADIUS_CANDIDATE, NODES_OLD,      &
-                    NODES_CANDIDATE, MIN_ORBITAL_OVERLAP,         &
+                    NODES_CANDIDATE, NNODEP(J), MIN_ORBITAL_OVERLAP,&
                     MAX_RADIUS_RATIO, REJECT_NODE_CHANGE,        &
                     REJECT_CANDIDATE, QUALITY_DETAIL)
                IF (.NOT. REJECT_CANDIDATE) THEN
