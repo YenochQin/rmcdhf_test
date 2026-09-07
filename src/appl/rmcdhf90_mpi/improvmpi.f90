@@ -226,9 +226,9 @@
                enddo
             enddo
             ! NDCOF is the number of unique coefficients actually merged.
-            ! Using ndcof_max leaves trailing slots uninitialized when
-            ! ranks contribute different coefficient counts; DACON then
-            ! consumes those stale entries on the next orbital solve.
+            ! The union of rank-local NDA lists can exceed the longest local
+            ! list.  Using ndcof_max truncates that union, so DACON ignores
+            ! valid coefficients stored above the local maximum.
             NDCOF = i_last
             call dalloc(nda_buffer,'nda_buffer','IMPROVmpi')
             call dalloc(da_buffer,'da_buffer','IMPROVMPI')
