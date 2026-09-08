@@ -39,7 +39,7 @@
             ENABLE_ORBITAL_GUARD, MIN_ORBITAL_OVERLAP,             &
             MAX_RADIUS_RATIO, REJECT_NODE_CHANGE,                  &
             RECORD_ORBITAL_REJECTION, CLEAR_ORBITAL_REJECTIONS,    &
-            STRICT_METHOD3, GUARD_AFTER_DAMPING
+            STRICT_METHOD3, GUARD_AFTER_DAMPING, NODE_PROGRESS_GUARD
       USE ORBOPT_METRICS_C, ONLY: CALCULATE_ORBITAL_METRICS
       USE ORBOPT_METRICS_C, ONLY: CHECK_ORBITAL_QUALITY
       USE ORBOPT_TRACE_C, ONLY: TRACE_ORBITAL_UPDATE,               &
@@ -326,7 +326,14 @@
          CALL CHECK_ORBITAL_QUALITY(ORBITAL_OVERLAP, RADIUS_OLD,    &
               RADIUS_CANDIDATE, NODES_OLD, NODES_CANDIDATE,       &
               NNODEP(J), MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO,    &
-              REJECT_NODE_CHANGE, REJECT_CANDIDATE, QUALITY_DETAIL)
+              REJECT_NODE_CHANGE .AND. .NOT. NODE_PROGRESS_GUARD,   &
+              NODE_PROGRESS_GUARD,                                  &
+              REJECT_CANDIDATE, QUALITY_DETAIL)
+!        Progress mode validates every damped update.  This prevents a
+!        raw candidate that happens to equal NNODEP from being followed by
+!        a damped candidate that moves away from it.
+         IF (GUARD_AFTER_DAMPING .AND. NODE_PROGRESS_GUARD)          &
+            REJECT_CANDIDATE = .TRUE.
          IF (REJECT_CANDIDATE) THEN
             IF (GUARD_AFTER_DAMPING) THEN
 !              Try the normal damping operation before rejecting the raw
@@ -343,10 +350,11 @@
                     OLD_NORM, ORBITAL_OVERLAP, RADIUS_OLD,        &
                     RADIUS_CANDIDATE, NODES_OLD, NODES_CANDIDATE)
                CALL CHECK_ORBITAL_QUALITY(ORBITAL_OVERLAP,        &
-                    RADIUS_OLD, RADIUS_CANDIDATE, NODES_OLD,      &
-                    NODES_CANDIDATE, NNODEP(J), MIN_ORBITAL_OVERLAP,&
-                    MAX_RADIUS_RATIO, REJECT_NODE_CHANGE,        &
-                    REJECT_CANDIDATE, QUALITY_DETAIL)
+                    RADIUS_CANDIDATE, RADIUS_OLD, NODES_CANDIDATE, &
+                    NODES_OLD, NNODEP(J), MIN_ORBITAL_OVERLAP,     &
+                    MAX_RADIUS_RATIO, REJECT_NODE_CHANGE,         &
+                    NODE_PROGRESS_GUARD, REJECT_CANDIDATE,        &
+                    QUALITY_DETAIL)
                IF (.NOT. REJECT_CANDIDATE) THEN
                   CALL CLEAR_ORBITAL_REJECTIONS(J)
                   GOTO 900

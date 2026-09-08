@@ -225,17 +225,40 @@
 
 
          ELSE
-               OBQSUM = 1.D0/UCFJ + 1.D0/UCFM
+!           Match the serial SETLAG formula when both orbitals vary.
+!           For substantially different generalized occupations the
+!           off-diagonal multiplier is normalized by the occupation
+!           difference (QDIF).  The old MPI path always used OBQSUM,
+!           although rmcdhf90 and rmcdhf90_mem_mpi both retain this
+!           branch.  RESULT is a rank-local contribution, so it is
+!           reduced below without a nuclear RINTI term in this branch.
+            QDIF = ABS((UCFJ - UCFM)/MAX(UCFJ,UCFM))
+            IF (QDIF > P001) THEN
+               OBQDIF = 1.D0/UCFJ - 1.D0/UCFM
                TA(1) = 0.D0
                DO I = 2, MTP
-                  TA(I) = RPOR(I)*((PF(I,M)*XQJ(I)-QF(I,M)*XPJ(I)         &
-                                   +PF(I,J)*XQM(I)-QF(I,J)*XPM(I))*C      &
-                         +(YPJ(I)+YPM(I))*(PF(I,M)*PF(I,J)+QF(I,M)*QF(I,J)))
+                  TA(I) = RPOR(I)*((PF(I,M)*XQJ(I)-QF(I,M)*XPJ(I) -  &
+                                   PF(I,J)*XQM(I)+QF(I,J)*XPM(I))*C  &
+                         +(YPJ(I)-YPM(I))*(PF(I,M)*PF(I,J) +       &
+                                           QF(I,M)*QF(I,J)))
                END DO
 
                CALL QUAD (RESULT)
-               RIJM = RINTI(M,J,1)               !/ nprocs
+               ECV(LI) = RESULT/OBQDIF
+            ELSE
+               OBQSUM = 1.D0/UCFJ + 1.D0/UCFM
+               TA(1) = 0.D0
+               DO I = 2, MTP
+                  TA(I) = RPOR(I)*((PF(I,M)*XQJ(I)-QF(I,M)*XPJ(I) &
+                                   +PF(I,J)*XQM(I)-QF(I,J)*XPM(I))*C &
+                         +(YPJ(I)+YPM(I))*(PF(I,M)*PF(I,J) +       &
+                                           QF(I,M)*QF(I,J)))
+               END DO
+
+               CALL QUAD (RESULT)
+               RIJM = RINTI(M,J,1)
                ECV(LI) = (RESULT - 2.D0*RIJM / nprocs)/OBQSUM
+            ENDIF
 !start dbg
 !           WRITE (81,*)'4, RESULT, RIUJM, OBQSUM, ECV, TA'
 !           WRITE (81,*)RESULT, RIUJM, OBQSUM, ECV

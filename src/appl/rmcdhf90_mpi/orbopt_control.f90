@@ -14,6 +14,7 @@
       LOGICAL :: REQUIRE_BALANCED_PAIR = .FALSE.
       LOGICAL :: ENABLE_ORBITAL_GUARD = .FALSE.
       LOGICAL :: GUARD_AFTER_DAMPING = .FALSE.
+      LOGICAL :: NODE_PROGRESS_GUARD = .FALSE.
       LOGICAL :: STRICT_SCF_CONVERGENCE = .FALSE.
       LOGICAL :: DEFER_ORTHOGONALIZATION = .FALSE.
       LOGICAL :: STRICT_METHOD3 = .FALSE.
@@ -43,6 +44,8 @@
                                ENABLE_ORBITAL_GUARD)
          CALL READ_LOGICAL_ENV('GRASP_GUARD_AFTER_DAMPING',         &
                                GUARD_AFTER_DAMPING)
+         CALL READ_LOGICAL_ENV('GRASP_NODE_GUARD_PROGRESS',        &
+                               NODE_PROGRESS_GUARD)
          CALL READ_LOGICAL_ENV('GRASP_STRICT_SCF',                  &
                                STRICT_SCF_CONVERGENCE)
          CALL READ_LOGICAL_ENV('GRASP_DEFER_ORTHY',                 &
@@ -97,6 +100,8 @@
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(GUARD_AFTER_DAMPING, 1, MPI_LOGICAL, 0,       &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(NODE_PROGRESS_GUARD, 1, MPI_LOGICAL, 0,       &
+                     MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(STRICT_SCF_CONVERGENCE, 1, MPI_LOGICAL, 0,     &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(DEFER_ORTHOGONALIZATION, 1, MPI_LOGICAL, 0,    &
@@ -122,6 +127,7 @@
       IF (myid == 0 .AND. (TRACE_ORBOPT .OR. SAVE_RWFN_ITERATIONS .OR. &
           REQUIRE_BALANCED_PAIR .OR. ENABLE_ORBITAL_GUARD .OR.     &
           GUARD_AFTER_DAMPING .OR.                                  &
+          NODE_PROGRESS_GUARD .OR.                                  &
           STRICT_SCF_CONVERGENCE .OR. DEFER_ORTHOGONALIZATION .OR. &
           STRICT_METHOD3)) THEN
          WRITE (*,'(A,8(1X,L1))') 'ORBOPT controls:',               &
@@ -130,6 +136,9 @@
             STRICT_SCF_CONVERGENCE,                                 &
             SAVE_RWFN_ITERATIONS, DEFER_ORTHOGONALIZATION,         &
             STRICT_METHOD3
+      ENDIF
+      IF (myid == 0 .AND. NODE_PROGRESS_GUARD) THEN
+         WRITE (*,'(A)') 'ORBOPT node guard: non-worsening distance to NNODEP'
       ENDIF
       IF (myid == 0 .AND. (FIXED_ORBITAL_DAMPING /= 0.D0 .OR.     &
                            ENABLE_ORBITAL_GUARD)) THEN
