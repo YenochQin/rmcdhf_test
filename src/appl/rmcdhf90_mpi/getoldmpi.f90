@@ -27,7 +27,8 @@
       USE MPI_C
       USE ORBOPT_TRACE_C, ONLY: CHECK_RELATIVISTIC_PAIRS,           &
                                 TRACE_ORBITAL_SELECTION
-      USE ORBOPT_CONTROL_C, ONLY: APPLY_FIXED_ORBITAL_DAMPING
+      USE ORBOPT_CONTROL_C, ONLY: APPLY_FIXED_ORBITAL_DAMPING,       &
+                                  CONFIGURE_TARGET_STATES
 !-----------------------------------------------
 !   I n t e r f a c e   B l o c k s
 !-----------------------------------------------
@@ -76,6 +77,7 @@
                       MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast (ncmaxblk(1), nblock, MPI_INTEGER, 0,          &
                       MPI_COMM_WORLD, ierr)
+      CALL CONFIGURE_TARGET_STATES(NCMIN)
 
       ! actually, ncmin will always be positive
       IF (ncmin /= 0) THEN

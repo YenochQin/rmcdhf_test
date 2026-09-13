@@ -91,7 +91,7 @@
       LOGICAL :: FALLBACK
       CHARACTER(LEN=128) :: REJECT_DETAIL, QUALITY_DETAIL
       REAL(DOUBLE), DIMENSION(:), POINTER :: da_buffer
-      INTEGER, DIMENSION(:), POINTER :: nda_buffer,ndcof_buffer
+      INTEGER, DIMENSION(:), POINTER :: nda_buffer,ndcof_buffer,ndcof_disp
 !-----------------------------------------------
 !
 !   C Froese Fischer's IPR and ED1 parameter
@@ -183,16 +183,26 @@
             if (ndcof_buffer(i).gt.ndcof_max) ndcof_max=ndcof_buffer(i)
          ENDDO
          if (ndcof_max.gt.0) then
-            ntot = ndcof_max*nprocs
+            ! Each rank can produce a different number of coefficients.
+            ! Gather only the initialized part of each local NDA/DA array;
+            ! using ndcof_max as the send count reads past short local lists
+            ! and can feed uninitialized labels into the merge below.
+            call alloc(ndcof_disp,nprocs,'ndcof_disp','IMPROVmpi')
+            ndcof_disp(1) = 0
+            do i = 2, nprocs
+               ndcof_disp(i) = ndcof_disp(i-1) + ndcof_buffer(i-1)
+            enddo
+            ntot = ndcof_disp(nprocs) + ndcof_buffer(nprocs)
             call alloc(nda_buffer,ntot,'nda_buffer','IMPROVmpi')
-            call MPI_GATHER(nda, ndcof_max, I_MPI, nda_buffer,     &
-                 ndcof_max, I_MPI, 0, MPI_COMM_WORLD, ierr)
+            call MPI_Gatherv(nda, ndcof, I_MPI, nda_buffer,        &
+                 ndcof_buffer, ndcof_disp, I_MPI, 0,              &
+                 MPI_COMM_WORLD, ierr)
             CALL MPI_Bcast (nda_buffer, ntot, I_MPI, 0,            &
                                MPI_COMM_WORLD, ierr)
             call alloc(da_buffer, ntot, 'da_buffer','IMPROVmpi')
-            call MPI_GATHER(da, ndcof_max, MPI_DOUBLE_PRECISION,   &
-              da_buffer, ndcof_max, MPI_DOUBLE_PRECISION, 0,       &
-              MPI_COMM_WORLD, ierr)
+            call MPI_Gatherv(da, ndcof, MPI_DOUBLE_PRECISION,     &
+              da_buffer, ndcof_buffer, ndcof_disp,                &
+              MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
             CALL MPI_Bcast (da_buffer, ntot, MPI_DOUBLE_PRECISION, &
                                0, MPI_COMM_WORLD, ierr)
             i_last = 0
@@ -200,7 +210,10 @@
                ndcip = ndcof_buffer(iproc)
                do jproc = 1, ndcip
                   ifound = 0
-                  ind_buf = (iproc - 1)*ndcof_max + jproc
+                  ! MPI_Gatherv packs each rank at its actual displacement;
+                  ! ndcof_max is only the largest local count and is not a
+                  ! valid stride for the gathered buffer.
+                  ind_buf = ndcof_disp(iproc) + jproc
                   do k = 1, i_last
                      if (nda_buffer(ind_buf) .eq. NDA(k)) THEN
                         DA(k) = DA(k) + da_buffer(ind_buf)
@@ -233,6 +246,7 @@
             NDCOF = i_last
             call dalloc(nda_buffer,'nda_buffer','IMPROVmpi')
             call dalloc(da_buffer,'da_buffer','IMPROVMPI')
+            call dalloc(ndcof_disp,'ndcof_disp','IMPROVmpi')
          endif
          call dalloc(ndcof_buffer,'ndcof_buffer','IMPROVmpi')
       endif

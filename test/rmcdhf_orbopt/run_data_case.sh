@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ $# -lt 3 || $# -gt 6 ]]; then
-    echo "usage: $0 <ni_i|ni_ca_like|cl_i> <optimized|nv|minus_only|balanced> <output-dir> [nprocs] [estimate|archived] [stage]" >&2
+    echo "usage: $0 <ni_i|ni_ca_like|cl_i|fe_i> <optimized|nv|minus_only|balanced> <output-dir> [nprocs] [estimate|archived] [stage]" >&2
     exit 2
 fi
 
@@ -24,7 +24,15 @@ if [[ $initial_wave != estimate && $initial_wave != archived ]]; then
 fi
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 storage_root=$(realpath -m "$repo_root/../data/rmcdhf_test_data")
-data_root=$storage_root/inputs
+# Keep the workspace fixture as the default.  Large external fixtures (for
+# example Fe I on the NVMe validation disk) can be selected without copying
+# their multi-gigabyte CSF files into the repository:
+#   GRASP_TEST_DATA_ROOT=/path/to/rmcdhf_test_cal
+data_root=${GRASP_TEST_DATA_ROOT:-$storage_root/inputs}
+external_fixture=0
+if [[ -n ${GRASP_TEST_DATA_ROOT:-} ]]; then
+    external_fixture=1
+fi
 results_root=$storage_root/results
 mkdir -p "$results_root"
 if [[ $output_dir != /* ]]; then
@@ -79,28 +87,53 @@ case "$case_name:$mode" in
         level_weight=1
         ;;
     ni_ca_like:optimized)
-        source_dir=$data_root/Ni_Ca-like/even1_cv
+        if (( external_fixture )); then
+            source_dir=$data_root/Ni_Ca-like/e1_cv
+        else
+            source_dir=$data_root/Ni_Ca-like/even1_cv
+        fi
         prefix=e1_cv
         varied_as1='4s,4p,4d,4f'
         varied_as2='5s,5p,5d,5f,5g'
         level_weight=5
         ;;
     cl_i:optimized)
-        source_dir=$data_root/Cl_I/o1_vv1
-        prefix=o1_vv
-        varied_as1='4s,4p,3d'
-        varied_as2='5s,5p,4d,4f'
-        varied_as3='6s,6p,5d,5f,5g'
-        varied_as4='7s,7p,6d,6f,6g'
-        varied_as5='8s,8p,7d,7f,7g'
+        if (( external_fixture )); then
+            source_dir=$data_root/Cl_I/o1_cc1
+            prefix=o1_cc1
+        else
+            source_dir=$data_root/Cl_I/o1_vv1
+            prefix=o1_vv
+        fi
+        if (( external_fixture )); then
+            varied_as1='4s,4p,4d,4f'
+            varied_as2='5s,5p,5d,5f,5g'
+            varied_as3='6s,6p,6d,6f,6g'
+            varied_as4='7s,7p,7d,7f,7g'
+            varied_as5='8s,8p,8d,8f,8g'
+        else
+            varied_as1='4s,4p,3d'
+            varied_as2='5s,5p,4d,4f'
+            varied_as3='6s,6p,5d,5f,5g'
+            varied_as4='7s,7p,6d,6f,6g'
+            varied_as5='8s,8p,7d,7f,7g'
+        fi
         level_weight=5
         max_stage=5
         asf_selection=$'1\n1'
         isodata_source=$repo_root/test/rmcdhf_orbopt/fixtures/cl_isodata
+        if (( external_fixture )); then
+            isodata_source=$source_dir/isodata
+        fi
         ;;
     cl_i:nv)
-        source_dir=$data_root/Cl_I/o1_vv_no_varied
-        prefix=o1_vv_no_varied_
+        if (( external_fixture )); then
+            source_dir=$data_root/Cl_I/o1_cc1_NV
+            prefix=o1_cc1_NV
+        else
+            source_dir=$data_root/Cl_I/o1_vv_no_varied
+            prefix=o1_vv_no_varied_
+        fi
         varied_as1=''
         varied_as2=''
         varied_as3=''
@@ -110,10 +143,18 @@ case "$case_name:$mode" in
         max_stage=5
         asf_selection=$'1\n1'
         isodata_source=$repo_root/test/rmcdhf_orbopt/fixtures/cl_isodata
+        if (( external_fixture )); then
+            isodata_source=$source_dir/isodata
+        fi
         ;;
     cl_i:minus_only)
-        source_dir=$data_root/Cl_I/o1_vv1
-        prefix=o1_vv
+        if (( external_fixture )); then
+            source_dir=$data_root/Cl_I/o1_cc1
+            prefix=o1_cc1
+        else
+            source_dir=$data_root/Cl_I/o1_vv1
+            prefix=o1_vv
+        fi
         varied_as1='4s,4p-,3d-'
         varied_as2='5s,5p-,4d-,4f-'
         varied_as3='6s,6p-,5d-,5f-,5g-'
@@ -123,10 +164,18 @@ case "$case_name:$mode" in
         max_stage=5
         asf_selection=$'1\n1'
         isodata_source=$repo_root/test/rmcdhf_orbopt/fixtures/cl_isodata
+        if (( external_fixture )); then
+            isodata_source=$source_dir/isodata
+        fi
         ;;
     cl_i:balanced)
-        source_dir=$data_root/Cl_I/o1_vv1
-        prefix=o1_vv
+        if (( external_fixture )); then
+            source_dir=$data_root/Cl_I/o1_cc1
+            prefix=o1_cc1
+        else
+            source_dir=$data_root/Cl_I/o1_vv1
+            prefix=o1_vv
+        fi
         varied_as1='4s,4p-,4p,3d-,3d'
         varied_as2='5s,5p-,5p,4d-,4d,4f-,4f'
         varied_as3='6s,6p-,6p,5d-,5d,5f-,5f,5g-,5g'
@@ -136,6 +185,9 @@ case "$case_name:$mode" in
         max_stage=5
         asf_selection=$'1\n1'
         isodata_source=$repo_root/test/rmcdhf_orbopt/fixtures/cl_isodata
+        if (( external_fixture )); then
+            isodata_source=$source_dir/isodata
+        fi
         ;;
     ni_ca_like:nv)
         source_dir=$data_root/Ni_Ca-like/e1_cv_NV
@@ -145,18 +197,50 @@ case "$case_name:$mode" in
         level_weight=5
         ;;
     ni_ca_like:minus_only)
-        source_dir=$data_root/Ni_Ca-like/even1_cv
+        if (( external_fixture )); then
+            source_dir=$data_root/Ni_Ca-like/e1_cv
+        else
+            source_dir=$data_root/Ni_Ca-like/even1_cv
+        fi
         prefix=e1_cv
         varied_as1='4s,4p-,4d-,4f-'
         varied_as2='5s,5p-,5d-,5f-,5g-'
         level_weight=5
         ;;
     ni_ca_like:balanced)
-        source_dir=$data_root/Ni_Ca-like/even1_cv
+        if (( external_fixture )); then
+            source_dir=$data_root/Ni_Ca-like/e1_cv
+        else
+            source_dir=$data_root/Ni_Ca-like/even1_cv
+        fi
         prefix=e1_cv
         varied_as1='4s,4p-,4p,4d-,4d,4f-,4f'
         varied_as2='5s,5p-,5p,5d-,5d,5f-,5f,5g-,5g'
         level_weight=5
+        ;;
+    fe_i:optimized)
+        source_dir=$data_root/Fe_I/e1_vv3
+        prefix=e1_vv3
+        asf_selection=$'1-5\n1-4\n1-8\n1-6\n1-7\n1-2\n1-2'
+        varied_as1='4s,4p,4d,4f'
+        varied_as2='5s,5p,5d,5f,5g'
+        varied_as3='6s,6p,6d,6f,6g'
+        varied_as4='7s,7p,7d,7f,7g'
+        varied_as5='8s,8p,8d,8f,8g'
+        level_weight=5
+        max_stage=5
+        ;;
+    fe_i:nv)
+        source_dir=$data_root/Fe_I/e1_vv3_NV
+        prefix=e1_vv3_NV
+        asf_selection=$'1-5\n1-4\n1-8\n1-6\n1-7\n1-2\n1-2'
+        varied_as1=''
+        varied_as2=''
+        varied_as3=''
+        varied_as4=''
+        varied_as5=''
+        level_weight=5
+        max_stage=5
         ;;
     *)
         echo "unsupported case/mode: $case_name $mode" >&2
@@ -183,6 +267,9 @@ archived_sum=${prefix}as${stage}.sum
 archived_wave=${prefix}as${stage}.w
 varied_name=varied_as${stage}
 varied=${!varied_name}
+if [[ ${GRASP_VARIED_OVERRIDE+x} ]]; then
+    varied=$GRASP_VARIED_OVERRIDE
+fi
 
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
@@ -190,6 +277,13 @@ mpi_tmp=${GRASP_MPI_TMP:-/home/workstation2/caltmp}
 
 if [[ -z $isodata_source ]]; then
     isodata_source=$source_dir/isodata
+fi
+if [[ -n ${GRASP_ISODATA_SOURCE:-} ]]; then
+    isodata_source=$GRASP_ISODATA_SOURCE
+fi
+if [[ $(head -n 1 "$isodata_source") != 'Atomic number:' ]]; then
+    echo "invalid isodata header: $isodata_source" >&2
+    exit 2
 fi
 cp "$isodata_source" "$output_dir/isodata"
 cp "$source_dir/$rcsf_name" "$output_dir/rcsf.inp"
@@ -202,6 +296,34 @@ cp "$previous_wave" "$output_dir/previous.w"
 cp "$source_dir/$archived_sum" "$output_dir/archived.sum"
 if [[ $initial_wave == archived ]]; then
     cp "$source_dir/$archived_wave" "$output_dir/rwfn.inp"
+fi
+
+if [[ ${GRASP_DEBUG_EIGENVECTORS:-0} == 1 ]]; then
+    # Enable only LDBPG(5), which writes each NEWCO CI-vector block to
+    # rscf92.dbg. Keep all other debug streams disabled.
+    {
+        printf 'n\ny\n\n'
+        printf 'n\n%.0s' {1..4}
+        printf 'y\n'
+        printf 'n\n%.0s' {1..16}
+        # NDEF=1 also asks for the radial-grid and ACCY overrides before
+        # GETOLD reads the ASF/weight/orbital selections.
+        printf 'n\nn\n'
+        printf '%s\n%s\n%s\n\n100\n' \
+            "$asf_selection" "$level_weight" "$varied"
+        printf 'n\n'
+        # With non-default settings SCF asks for the orthonormalisation
+        # order; 1 preserves the historical update-order behaviour.
+        printf '1\n'
+    } > "$output_dir/rmcdhf.stdin"
+else
+    printf 'y\n%s\n%s\n%s\n\n100\n' \
+        "$asf_selection" "$level_weight" "$varied" > "$output_dir/rmcdhf.stdin"
+fi
+# Prepare the exact inputs without launching MPI for a submission preflight.
+if [[ ${GRASP_PREPARE_ONLY:-0} == 1 ]]; then
+    echo "prepared: $case_name $mode AS$stage -> $output_dir"
+    exit 0
 fi
 
 source /usr/share/Modules/init/bash
@@ -276,8 +398,6 @@ if [[ $initial_wave == estimate ]]; then
         < rwfnestimate.stdin > rwfnestimate.stdout 2>&1
 fi
 
-printf 'y\n%s\n%s\n%s\n\n100\n' \
-    "$asf_selection" "$level_weight" "$varied" > rmcdhf.stdin
 set +e
 rmcdhf_timeout=${GRASP_RMCDHF_TIMEOUT:-}
 rmcdhf_kill_after=${GRASP_RMCDHF_KILL_AFTER:-30s}
@@ -321,8 +441,13 @@ if [[ -f rmcdhf.log ]]; then
     cp -f rmcdhf.log rmcdhf_diagnostic.log
 fi
 
-python3 "$repo_root/test/rmcdhf_orbopt/compare_rmcdhf.py" \
-    "$output_dir/orbopt_trace.csv" > "$output_dir/orbopt_summary.csv"
+# A missing trace must not mask the launcher's original failure code.
+if [[ -s $output_dir/orbopt_trace.csv ]]; then
+    python3 "$repo_root/test/rmcdhf_orbopt/compare_rmcdhf.py" \
+        "$output_dir/orbopt_trace.csv" > "$output_dir/orbopt_summary.csv" || {
+        if [[ $rmcdhf_status -eq 0 ]]; then exit 1; fi
+    }
+fi
 if [[ $rmcdhf_status -ne 0 ]]; then
     if [[ ${GRASP_EXPECT_RMCDHF_FAILURE:-0} == 1 ]]; then
         echo "completed expected failure: $case_name $mode AS$stage ($nprocs ranks)"
@@ -365,10 +490,18 @@ convergence_mode=legacy
 case ${GRASP_STRICT_SCF:-0} in
     1|true|TRUE|yes|YES|on|ON) convergence_mode=strict ;;
 esac
+set +e
 python3 "$repo_root/test/rmcdhf_orbopt/check_strict_scf.py" \
     "$output_dir/orbopt_trace.csv" --mode "$convergence_mode" \
     > "$output_dir/convergence_check.txt"
-if [[ ${GRASP_TRACE_RWFN:-0} == 1 ]]; then
+convergence_status=$?
+set -e
+printf '%s\n' "$convergence_status" > "$output_dir/convergence_check.exitcode"
+if (( convergence_status != 0 )); then
+    echo "${convergence_mode} SCF convergence check failed; rmcdhf itself completed" >&2
+    exit "$convergence_status"
+fi
+if [[ ${GRASP_TRACE_RWFN:-0} == 1 && -n $varied ]]; then
     python3 "$repo_root/test/rmcdhf_orbopt/compare_rwfn.py" \
         "$output_dir/rwfn.inp" "$output_dir"/rwfn.out.iter* \
         > "$output_dir/rwfn_metrics.csv"
@@ -377,7 +510,7 @@ if [[ ${GRASP_TRACE_RWFN:-0} == 1 ]]; then
         > "$output_dir/rwfn_crosscheck.csv"
 fi
 comparison_args=()
-if [[ $mode == minus_only || $mode == balanced ]]; then
+if [[ $mode == minus_only || $mode == balanced || ${GRASP_ALLOW_ENERGY_DIFFERENCES:-0} == 1 ]]; then
     comparison_args+=(--allow-energy-differences)
 fi
 if [[ ${GRASP_ALLOW_RADIAL_GRID_DIFFERENCE:-0} == 1 ]]; then

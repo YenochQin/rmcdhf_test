@@ -19,7 +19,7 @@
       USE ORBOPT_CONTROL_C
       IMPLICIT NONE
 
-      INTEGER, PARAMETER :: TRACE_FIELD_COUNT = 58
+      INTEGER, PARAMETER :: TRACE_FIELD_COUNT = 70
       INTEGER, PARAMETER :: TRACE_FIELD_LENGTH = 128
       LOGICAL :: TRACE_OPEN = .FALSE.
 
@@ -52,7 +52,23 @@
       CALL PUT_LOGICAL(FIELDS(56), SAVE_RWFN_ITERATIONS)
       CALL PUT_LOGICAL(FIELDS(57), DEFER_ORTHOGONALIZATION)
       CALL PUT_LOGICAL(FIELDS(58), STRICT_METHOD3)
-      IF (NODE_PROGRESS_GUARD) FIELDS(40) = 'node_guard_progress'
+      CALL PUT_LOGICAL(FIELDS(64), ROUND_ROLLBACK_GUARD)
+      CALL PUT_LOGICAL(FIELDS(65), ROUND_REJECT_ENERGY_ORDER)
+      CALL PUT_REAL(FIELDS(66), MIN_STATE_OVERLAP)
+      CALL PUT_INTEGER(FIELDS(67), MAX_ROUND_ROLLBACKS)
+      CALL PUT_INTEGER(FIELDS(68), TARGET_STATE_COUNT)
+      CALL PUT_LOGICAL(FIELDS(69), TARGET_STATE_COUNT > 1)
+      IF (TARGET_STATE_COUNT > 0) THEN
+         FIELDS(40) = 'target_states='//TRIM(TARGET_STATE_SPEC)
+      ENDIF
+      IF (NODE_PROGRESS_GUARD) THEN
+         IF (TARGET_STATE_COUNT > 0) THEN
+            FIELDS(40) = 'node_guard_progress;target_states='// &
+                         TRIM(TARGET_STATE_SPEC)
+         ELSE
+            FIELDS(40) = 'node_guard_progress'
+         ENDIF
+      ENDIF
       CALL EMIT_TRACE_ROW(ORBOPT_TRACE_UNIT, FIELDS)
       END SUBROUTINE TRACE_ORBOPT_CONTROLS
 
@@ -75,7 +91,11 @@
          'mtp_candidate,energy_delta,level_weight,convg_legacy,' // &
          'convg_strict,strict_streak,energy_valid,' //             &
          'strict_scf_enabled,save_rwfn_iterations,defer_orthy,' // &
-         'strict_method3'
+         'strict_method3,round_accepted,round_order_changed,' //   &
+         'round_nonidentity,round_rollback_count,round_min_overlap,' // &
+         'round_guard_enabled,round_reject_energy_order,' //       &
+         'min_state_overlap,max_round_rollbacks,target_state_count,' // &
+         'target_order_scoped,round_identity_stable'
       END SUBROUTINE WRITE_TRACE_HEADER
 
       SUBROUTINE CLEAR_TRACE_FIELDS(FIELDS, EVENT, NIT)
@@ -93,7 +113,14 @@
       CHARACTER(LEN=TRACE_FIELD_LENGTH), INTENT(IN) :: FIELDS(:)
       INTEGER :: I
       DO I = 1, TRACE_FIELD_COUNT
-         WRITE (UNIT_NUMBER,'(A)',ADVANCE='NO') TRIM(FIELDS(I))
+         ! Detail fields may contain a comma (for example the target-state
+         ! specification). Quote such fields so every row remains valid CSV.
+         IF (INDEX(TRIM(FIELDS(I)), ',') > 0) THEN
+            WRITE (UNIT_NUMBER,'(A)',ADVANCE='NO') &
+                 '"'//TRIM(FIELDS(I))//'"'
+         ELSE
+            WRITE (UNIT_NUMBER,'(A)',ADVANCE='NO') TRIM(FIELDS(I))
+         ENDIF
          IF (I < TRACE_FIELD_COUNT)                                 &
             WRITE (UNIT_NUMBER,'(A)',ADVANCE='NO') ','
       END DO
@@ -318,11 +345,13 @@
       SUBROUTINE TRACE_SCF_END(NIT, CONVG_ORBITAL, CONVG_ENERGY,   &
                                CONVG_LEGACY, CONVG_STRICT,          &
                                CONVG_FINAL, ENERGY_VALID,           &
-                               STRICT_STREAK, WTAEV, WTAEV0, DAMPMX)
+                               STRICT_STREAK, ROUND_IDENTITY_STABLE,&
+                               WTAEV, WTAEV0, DAMPMX)
       INTEGER, INTENT(IN) :: NIT, STRICT_STREAK
       LOGICAL, INTENT(IN) :: CONVG_ORBITAL, CONVG_ENERGY
       LOGICAL, INTENT(IN) :: CONVG_LEGACY, CONVG_STRICT
       LOGICAL, INTENT(IN) :: CONVG_FINAL, ENERGY_VALID
+      LOGICAL, INTENT(IN) :: ROUND_IDENTITY_STABLE
       REAL(DOUBLE), INTENT(IN) :: WTAEV, WTAEV0, DAMPMX
       CHARACTER(LEN=TRACE_FIELD_LENGTH) :: FIELDS(TRACE_FIELD_COUNT)
       CALL OPEN_ORBOPT_TRACE
@@ -338,6 +367,7 @@
       CALL PUT_LOGICAL(FIELDS(52), CONVG_STRICT)
       CALL PUT_INTEGER(FIELDS(53), STRICT_STREAK)
       CALL PUT_LOGICAL(FIELDS(54), ENERGY_VALID)
+      CALL PUT_LOGICAL(FIELDS(70), ROUND_IDENTITY_STABLE)
       IF (.NOT.CONVG_FINAL) THEN
          FIELDS(40) = 'continue'
       ELSE IF (STRICT_SCF_CONVERGENCE) THEN
@@ -349,6 +379,28 @@
       ENDIF
       CALL EMIT_TRACE_ROW(ORBOPT_TRACE_UNIT, FIELDS)
       END SUBROUTINE TRACE_SCF_END
+
+      SUBROUTINE TRACE_ROUND_DECISION(NIT, ACCEPTED, MIN_OVERLAP, &
+                                      ORDER_CHANGED, NONIDENTITY, &
+                                      ROLLBACK_COUNT, DETAIL)
+      INTEGER, INTENT(IN) :: NIT, ROLLBACK_COUNT
+      LOGICAL, INTENT(IN) :: ACCEPTED, ORDER_CHANGED, NONIDENTITY
+      REAL(DOUBLE), INTENT(IN) :: MIN_OVERLAP
+      CHARACTER(LEN=*), INTENT(IN) :: DETAIL
+      CHARACTER(LEN=TRACE_FIELD_LENGTH) :: FIELDS(TRACE_FIELD_COUNT)
+
+      CALL OPEN_ORBOPT_TRACE
+      IF (.NOT.TRACE_OPEN) RETURN
+      CALL CLEAR_TRACE_FIELDS(FIELDS, 'round_decision', NIT)
+      CALL PUT_INTEGER(FIELDS(4), ROLLBACK_COUNT)
+      CALL PUT_LOGICAL(FIELDS(59), ACCEPTED)
+      CALL PUT_LOGICAL(FIELDS(60), ORDER_CHANGED)
+      CALL PUT_LOGICAL(FIELDS(61), NONIDENTITY)
+      CALL PUT_INTEGER(FIELDS(62), ROLLBACK_COUNT)
+      CALL PUT_REAL(FIELDS(63), MIN_OVERLAP)
+      FIELDS(40) = DETAIL
+      CALL EMIT_TRACE_ROW(ORBOPT_TRACE_UNIT, FIELDS)
+      END SUBROUTINE TRACE_ROUND_DECISION
 
       SUBROUTINE TRACE_LEVEL_ENERGY(NIT, LEVEL_INDEX, BLOCK_INDEX,  &
                                     LEVEL_SERIAL, ENERGY, WEIGHT)

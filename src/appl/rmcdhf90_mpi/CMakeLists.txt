@@ -2,6 +2,7 @@ add_executable(rmcdhf_mpi
     orbopt_control.f90
     orbopt_trace.f90
     orbopt_metrics.f90
+    orbopt_round_state.f90
     dsubrs.f90
     dsubrs_I.f90
     fco.f90

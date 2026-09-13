@@ -42,7 +42,7 @@
 !-----------------------------------------------
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
-      INTEGER :: NS, JOFFSPAR, J, JOFFNORM, IR, NFOUND, INFO
+      INTEGER :: NS, J, JOFFNORM, IR, NFOUND, INFO
 
       integer, dimension(:), pointer :: iwork,ifail
       real(double), dimension(:), pointer :: ap, eigval,vec, work
@@ -60,14 +60,14 @@
 
 !  Expand the sparse form to normal form for upper-right sub-matrix
 
-      JOFFSPAR = 0                               ! offset for sparse form
 !     DO J = 1, NS
       DO j = myid + 1, ns, nprocs
          JOFFNORM = (J*(J - 1))/2                ! offset for normal form
-         DO IR = JOFFSPAR + 1, JCOL(J)
+         ! JCOL is cumulative; ranks process strided columns, so the
+         ! sparse range must use the preceding endpoint of this column.
+         DO IR = JCOL(J-1) + 1, JCOL(J)
             AP(IROW(IR)+JOFFNORM) = HMX(IR)
          END DO
-         JOFFSPAR = JCOL(J)
       END DO
 
 !  Merge ap from all nodes and then send to all nodes

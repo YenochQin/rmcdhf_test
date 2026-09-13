@@ -152,6 +152,24 @@ GRASP_EXPECT_RMCDHF_FAILURE=1 \
   ni_i balanced ni-guard 24 estimate 2
 ```
 
+The SCF-round guard can scope its CI identity and energy-order checks to the
+physical roots that must retain their meaning.  `GRASP_ROUND_TARGET_STATES`
+is a comma/space/semicolon/colon-separated list of **1-based global state
+indices** in the `NEWCOmpi` order.  The minimal 46-rank probe supplies
+`3,4,7` for the Ni fixtures (the J=2, J=3, and J=4 roots of the target
+`^3F_J` sequence) and `1,2` for Cl I; set the per-case variables
+`GRASP_ROUND_TARGET_STATES_NI_I`, `GRASP_ROUND_TARGET_STATES_NICA`, or
+`GRASP_ROUND_TARGET_STATES_CL_I` when the ASF selection changes.  With a
+target list, low CI overlap in untracked auxiliary roots remains diagnostic
+but does not reject an otherwise stable target set.  The complete assignment
+is still recorded so root crossings can be audited.
+
+Run the offline assignment/target-order checks without submitting a job:
+
+```sh
+python3 test/rmcdhf_orbopt/test_round_state_logic.py
+```
+
 Guard thresholds are configured with `GRASP_MIN_ORBITAL_OVERLAP`,
 `GRASP_MAX_RADIUS_RATIO`, `GRASP_REJECT_NODE_CHANGE`, and
 `GRASP_MAX_REJECTS_PER_ORBITAL`. Expected-failure mode preserves the trace and

@@ -48,9 +48,18 @@
       USE ORTHCT_C
       USE ORBOPT_CONTROL_C, ONLY: SET_ORBOPT_ITERATION,             &
                                   STRICT_SCF_CONVERGENCE,            &
-                                  SAVE_RWFN_ITERATIONS
+                                  SAVE_RWFN_ITERATIONS,              &
+                                  ROUND_ROLLBACK_GUARD,              &
+                                  MAX_ROUND_ROLLBACKS,               &
+                                  MIN_STATE_OVERLAP
       USE ORBOPT_TRACE_C, ONLY: TRACE_SCF_BEGIN, TRACE_SCF_END,     &
-                                TRACE_MPI_SUMMARY, CLOSE_ORBOPT_TRACE
+                                TRACE_MPI_SUMMARY, CLOSE_ORBOPT_TRACE,&
+                                TRACE_ROUND_DECISION
+      USE ORBOPT_ROUND_STATE_C, ONLY: BEGIN_ORBOPT_ROUND,           &
+                                      CHECK_ORBOPT_ROUND,            &
+                                      RESTORE_ORBOPT_ROUND,          &
+                                      END_ORBOPT_ROUND,               &
+                                      ROUND_ROLLBACK_COUNT
 !-----------------------------------------------
 !   I n t e r f a c e   B l o c k s
 !-----------------------------------------------
@@ -80,6 +89,10 @@
       REAL(DOUBLE) :: WTAEV, WTAEV0, DAMPMX
       LOGICAL :: CONVG, CONVG_ENERGY, CONVG_ORBITAL, LSORT, dvdfirst
       LOGICAL :: CONVG_LEGACY, CONVG_STRICT, ENERGY_VALID
+      LOGICAL :: ROUND_BAD, ROUND_ORDER_CHANGED, ROUND_NONIDENTITY
+      LOGICAL :: ROUND_IDENTITY_STABLE
+      REAL(DOUBLE) :: ROUND_MIN_OVERLAP
+      CHARACTER(LEN=128) :: ROUND_DETAIL
 !-----------------------------------------------
 !CFF   .. set the logical variable dvdfirst
       dvdfirst = .true.
@@ -187,6 +200,8 @@
          CALL SET_ORBOPT_ITERATION(NIT)
          CALL TRACE_SCF_BEGIN(NIT, NSCF, NSIC, ACCY, ORTHST, LSORT, &
                               WTAEV0)
+         CALL BEGIN_ORBOPT_ROUND(EOL)
+         ROUND_IDENTITY_STABLE = .TRUE.
 
 !   For all pairs constrained through a Lagrange multiplier, compute
 !   the Lagrange multiplier
@@ -258,6 +273,57 @@
                ERROR STOP 'SCFmpi: non-finite weighted energy'
             ENDIF
          ENDIF
+
+!        Treat the complete orbital update and rediagonalisation as one
+!        transaction.  A bad candidate is discarded before it can affect
+!        convergence or the next round's weighted-energy reference.
+         IF (EOL .AND. ROUND_ROLLBACK_GUARD) THEN
+            CALL CHECK_ORBOPT_ROUND(ROUND_BAD, ROUND_MIN_OVERLAP,  &
+                 ROUND_ORDER_CHANGED, ROUND_NONIDENTITY, ROUND_DETAIL)
+            ROUND_IDENTITY_STABLE = ROUND_MIN_OVERLAP >= MIN_STATE_OVERLAP
+            IF (ROUND_BAD) THEN
+               CALL TRACE_ROUND_DECISION(NIT, .FALSE.,             &
+                    ROUND_MIN_OVERLAP, ROUND_ORDER_CHANGED,       &
+                    ROUND_NONIDENTITY, ROUND_ROLLBACK_COUNT + 1,   &
+                    ROUND_DETAIL)
+               CALL RESTORE_ORBOPT_ROUND
+               IF (ROUND_ROLLBACK_COUNT > MAX_ROUND_ROLLBACKS) THEN
+                  IF (MYID == 0) WRITE (ISTDE,'(A,I0)')           &
+                     'SCFmpi: round rollback limit exceeded: ',    &
+                     ROUND_ROLLBACK_COUNT
+                  ERROR STOP 'SCFmpi: round rollback limit exceeded'
+               ENDIF
+               WTAEV = WTAEV0
+               CONVG_ORBITAL = .FALSE.
+               CONVG_ENERGY = .FALSE.
+               CONVG_LEGACY = .FALSE.
+               CONVG_STRICT = .FALSE.
+               CONVG = .FALSE.
+               ENERGY_VALID = .FALSE.
+               ROUND_IDENTITY_STABLE = .FALSE.
+               STRICT_STREAK = 0
+               IF (MYID == 0) THEN
+                  CALL ORBOUT(RWFFILE2)
+                  IF (SAVE_RWFN_ITERATIONS) THEN
+                     WRITE (RWF_SNAPSHOT,'(A,".iter",I3.3)')    &
+                          TRIM(RWFFILE2), NIT
+                     CALL ORBOUT(TRIM(RWF_SNAPSHOT))
+                  ENDIF
+               ENDIF
+               CALL TRACE_SCF_END(NIT, CONVG_ORBITAL,             &
+                    CONVG_ENERGY, CONVG_LEGACY, CONVG_STRICT,    &
+                    CONVG, ENERGY_VALID, STRICT_STREAK,           &
+                    ROUND_IDENTITY_STABLE, WTAEV,                &
+                    WTAEV0, DAMPMX)
+               CALL TRACE_MPI_SUMMARY(NIT)
+               CYCLE
+            ELSE
+               CALL TRACE_ROUND_DECISION(NIT, .TRUE.,              &
+                    ROUND_MIN_OVERLAP, ROUND_ORDER_CHANGED,        &
+                    ROUND_NONIDENTITY, ROUND_ROLLBACK_COUNT,       &
+                    'accepted')
+            ENDIF
+         ENDIF
 !        Make this a relative convergence test
 !        IF(ABS(WTAEV-WTAEV0).LT.1.0D-9.and.
 !    &   DAMPMX.LT.1.0D-4) CONVG=.true.
@@ -276,7 +342,7 @@
             CONVG_ENERGY = ABS((WTAEV - WTAEV0)/WTAEV) < 0.001*ACCY
          CONVG_LEGACY = CONVG_ORBITAL .OR. CONVG_ENERGY
          CONVG_STRICT = CONVG_ORBITAL .AND. CONVG_ENERGY .AND.     &
-                        ENERGY_VALID
+                        ENERGY_VALID .AND. ROUND_IDENTITY_STABLE
          IF (CONVG_STRICT) THEN
             STRICT_STREAK = STRICT_STREAK + 1
          ELSE
@@ -289,7 +355,8 @@
          ENDIF
          CALL TRACE_SCF_END(NIT, CONVG_ORBITAL, CONVG_ENERGY,      &
                             CONVG_LEGACY, CONVG_STRICT, CONVG,      &
-                            ENERGY_VALID, STRICT_STREAK, WTAEV,     &
+                            ENERGY_VALID, STRICT_STREAK,            &
+                            ROUND_IDENTITY_STABLE, WTAEV,           &
                             WTAEV0, DAMPMX)
          CALL TRACE_MPI_SUMMARY(NIT)
          WTAEV0 = WTAEV
@@ -315,6 +382,7 @@
 !   Complete the summary - moved from rscf92 for easier alloc/dalloc
 !
       IF (myid .EQ. 0) CALL ENDSUM
+      CALL END_ORBOPT_ROUND
       CALL CLOSE_ORBOPT_TRACE
 !
 !   Deallocate storage

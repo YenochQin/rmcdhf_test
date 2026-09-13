@@ -22,6 +22,25 @@ REQUIRED_FIELDS = {
 }
 
 
+def control_flag(rows: list[dict[str, str]], name: str) -> bool:
+    """Return a control value when the trace contains a control row.
+
+    Older traces predate the round guard columns, so a missing value keeps the
+    historical interpretation (the additional identity gate is disabled).
+    """
+
+    for row in rows:
+        if row.get("event") != "control":
+            continue
+        value = row.get(name, "")
+        if value == "true":
+            return True
+        if value == "false" or not value:
+            return False
+        raise ValueError(f"invalid control flag {name}={value!r}")
+    return False
+
+
 def read_scf_rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
@@ -42,6 +61,13 @@ def flag(row: dict[str, str], name: str) -> bool:
 
 
 def validate(rows: list[dict[str, str]], mode: str) -> None:
+    # Job traces produced before the per-iteration identity column was added
+    # remain valid historical evidence.  Only apply the extra gate when both
+    # the control flag and the new column are present.
+    identity_column_available = "round_identity_stable" in rows[0]
+    round_guard_enabled = identity_column_available and control_flag(
+        rows, "round_guard_enabled"
+    )
     first = rows[0]
     if flag(first, "energy_valid"):
         raise ValueError("the first SCF iteration must not have a prior energy")
@@ -56,7 +82,17 @@ def validate(rows: list[dict[str, str]], mode: str) -> None:
         energy_valid = flag(row, "energy_valid")
         if flag(row, "convg_legacy") != (orbital or energy):
             raise ValueError(f"iteration {row['iteration']}: invalid legacy value")
-        if flag(row, "convg_strict") != (orbital and energy and energy_valid):
+        identity_stable = True
+        if round_guard_enabled:
+            identity_text = row.get("round_identity_stable", "")
+            if identity_text not in {"true", "false"}:
+                raise ValueError(
+                    f"iteration {row['iteration']}: missing round identity status"
+                )
+            identity_stable = identity_text == "true"
+        if flag(row, "convg_strict") != (
+            orbital and energy and energy_valid and identity_stable
+        ):
             raise ValueError(f"iteration {row['iteration']}: invalid strict value")
 
     final = rows[-1]
