@@ -89,10 +89,24 @@ def target_min_overlap(
         assignment = max_weight_assignment(matrix)
         global_assignment.extend(offset + old for old in assignment)
         for row, old in enumerate(assignment):
-            if offset + row in targets:
+            # Targets identify old physical roots (assignment columns), not
+            # the candidate row number.  A root exchange must still measure
+            # the overlap against the selected old target column.
+            if offset + old in targets:
                 minimum = min(minimum, matrix[row][old])
         offset += len(matrix)
     return minimum, global_assignment
+
+
+def advance_targets(
+    targets: list[int], assignment: list[int], accepted: bool
+) -> list[int]:
+    """Move persistent target rows after an accepted assignment only."""
+
+    if not accepted:
+        return targets.copy()
+    current_for_old = {old: current for current, old in enumerate(assignment)}
+    return [current_for_old[target] for target in targets]
 
 
 def test_identity_assignment() -> None:
@@ -138,6 +152,34 @@ def test_bad_untracked_auxiliary_root_does_not_fail_target_gate() -> None:
     assert isclose(minimum, 0.99)
 
 
+def test_target_gate_follows_old_column_through_root_exchange() -> None:
+    # The target is old column 0.  Its physical root moved to candidate row 1;
+    # using candidate row 0 would incorrectly report the auxiliary overlap.
+    matrix = [[0.10, 0.95], [0.90, 0.20]]
+    minimum, assignment = target_min_overlap([matrix], {0})
+    assert assignment == [1, 0]
+    assert isclose(minimum, 0.90)
+
+
+def test_accepted_root_swap_persists_into_next_round() -> None:
+    first = max_weight_assignment([[0.10, 0.95], [0.90, 0.20]])
+    assert first == [1, 0]
+    targets = advance_targets([0], first, accepted=True)
+    assert targets == [1]
+
+    # In the next round the physical target remains in row 1.  A fixed
+    # initial index would silently start following the unrelated row 0.
+    second = max_weight_assignment([[0.99, 0.02], [0.01, 0.98]])
+    targets = advance_targets(targets, second, accepted=True)
+    assert targets == [1]
+
+
+def test_rejected_root_swap_does_not_advance_identity() -> None:
+    assignment = max_weight_assignment([[0.10, 0.95], [0.40, 0.20]])
+    assert assignment == [1, 0]
+    assert advance_targets([0], assignment, accepted=False) == [0]
+
+
 if __name__ == "__main__":
     tests = [
         test_identity_assignment,
@@ -145,6 +187,9 @@ if __name__ == "__main__":
         test_hungarian_beats_greedy_choice,
         test_target_order_can_span_blocks_and_auxiliary_root_is_ignored,
         test_bad_untracked_auxiliary_root_does_not_fail_target_gate,
+        test_target_gate_follows_old_column_through_root_exchange,
+        test_accepted_root_swap_persists_into_next_round,
+        test_rejected_root_swap_does_not_advance_identity,
     ]
     for test in tests:
         test()

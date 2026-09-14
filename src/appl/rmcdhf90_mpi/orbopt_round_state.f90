@@ -9,7 +9,7 @@
       USE eigv_C, ONLY: EAV, EVAL, EVEC
       USE hblock_C, ONLY: NBLOCK, NCFBLK, NEVBLK
       USE peav_C, ONLY: EAVBLK
-      USE pos_C, ONLY: NVECSIZ
+      USE pos_C, ONLY: NCFTOT, NVECSIZ, NCFPAST, NCMINPAST, NEVECPAST
       USE orb_C, ONLY: E, NW
       USE wave_C, ONLY: MF, PF, PZ, QF
       USE scf_C, ONLY: METHOD, SCNSTY, UCF
@@ -17,7 +17,7 @@
       USE int_C, ONLY: MTP0
       USE tatb_C, ONLY: MTP
       USE fixd_C, ONLY: LFIX
-      USE syma_C, ONLY: IATJPO, IASPAR
+      USE syma_C, ONLY: IATJPO, IASPAR, JPGG
       USE ORBOPT_CONTROL_C, ONLY: ROUND_ROLLBACK_GUARD,          &
             ROUND_REJECT_ENERGY_ORDER, MIN_STATE_OVERLAP,          &
             TARGET_STATE_COUNT, TARGET_STATE_INDEX
@@ -26,6 +26,13 @@
       LOGICAL :: ROUND_STATE_ACTIVE = .FALSE.
       INTEGER :: ROUND_ROLLBACK_COUNT = 0
       INTEGER, ALLOCATABLE :: ROUND_ASSIGNMENT(:)
+      INTEGER, ALLOCATABLE :: ROUND_TARGET_CURRENT(:)
+      INTEGER, ALLOCATABLE :: ROUND_TARGET_ACCEPTED(:)
+      INTEGER, ALLOCATABLE :: ROUND_TARGET_BLOCK(:)
+      INTEGER, ALLOCATABLE :: ROUND_TARGET_POSITION(:)
+      REAL(DOUBLE), ALLOCATABLE :: ROUND_TARGET_OVERLAP(:)
+      REAL(DOUBLE), ALLOCATABLE :: ROUND_TARGET_OLD_ENERGY(:)
+      REAL(DOUBLE), ALLOCATABLE :: ROUND_TARGET_NEW_ENERGY(:)
 
       REAL(DOUBLE), ALLOCATABLE :: PF_SAVE(:,:), QF_SAVE(:,:)
       REAL(DOUBLE), ALLOCATABLE :: EVAL_SAVE(:), EVEC_SAVE(:)
@@ -83,6 +90,22 @@
       NSIC_SAVE = NSIC
       ROUND_STATE_ACTIVE = .TRUE.
       END SUBROUTINE BEGIN_ORBOPT_ROUND
+
+      SUBROUTINE ACCEPT_ORBOPT_ROUND
+!     Carry physical target identities through an accepted root exchange.
+!     TARGET_STATE_INDEX identifies each target in the initial CI ordering;
+!     ROUND_TARGET_ACCEPTED records where that same target resides in the
+!     current, energy-sorted EVEC array.  Rejected candidates never update it.
+      INTEGER :: IOS
+
+      IF (.NOT.ROUND_STATE_ACTIVE .OR. TARGET_STATE_COUNT <= 0) RETURN
+      IF (.NOT.ALLOCATED(ROUND_TARGET_CURRENT)) RETURN
+      IF (.NOT.ALLOCATED(ROUND_TARGET_ACCEPTED)) THEN
+         ALLOCATE(ROUND_TARGET_ACCEPTED(TARGET_STATE_COUNT), STAT=IOS)
+         IF (IOS /= 0) ERROR STOP 'ORBOPT: persistent target allocation failed'
+      ENDIF
+      ROUND_TARGET_ACCEPTED = ROUND_TARGET_CURRENT
+      END SUBROUTINE ACCEPT_ORBOPT_ROUND
 
       SUBROUTINE CHECK_ORBOPT_ROUND(BAD, MIN_OVERLAP,             &
             ORDER_CHANGED, NONIDENTITY, DETAIL)
@@ -164,12 +187,57 @@
       IF (ALLOCATED(MF_SAVE)) DEALLOCATE(MF_SAVE)
       IF (ALLOCATED(METHOD_SAVE)) DEALLOCATE(METHOD_SAVE)
       IF (ALLOCATED(ROUND_ASSIGNMENT)) DEALLOCATE(ROUND_ASSIGNMENT)
+      IF (ALLOCATED(ROUND_TARGET_CURRENT)) DEALLOCATE(ROUND_TARGET_CURRENT)
+      IF (ALLOCATED(ROUND_TARGET_BLOCK)) DEALLOCATE(ROUND_TARGET_BLOCK)
+      IF (ALLOCATED(ROUND_TARGET_POSITION)) DEALLOCATE(ROUND_TARGET_POSITION)
+      IF (ALLOCATED(ROUND_TARGET_OVERLAP)) DEALLOCATE(ROUND_TARGET_OVERLAP)
+      IF (ALLOCATED(ROUND_TARGET_OLD_ENERGY)) DEALLOCATE(ROUND_TARGET_OLD_ENERGY)
+      IF (ALLOCATED(ROUND_TARGET_NEW_ENERGY)) DEALLOCATE(ROUND_TARGET_NEW_ENERGY)
       ROUND_STATE_ACTIVE = .FALSE.
       END SUBROUTINE RELEASE_ROUND_STORAGE
 
       SUBROUTINE END_ORBOPT_ROUND
       CALL RELEASE_ROUND_STORAGE()
+      IF (ALLOCATED(ROUND_TARGET_ACCEPTED))                         &
+         DEALLOCATE(ROUND_TARGET_ACCEPTED)
       END SUBROUTINE END_ORBOPT_ROUND
+
+      SUBROUTINE REWRITE_ROUND_MIX
+!     Rewrite the .mix stream from the accepted round snapshot.
+!     MATRIXmpi both diagonalises and applies CI-vector damping, so it
+!     cannot be called merely to serialise a state after a rejected round.
+!     The candidate .mix has already been produced by MATRIXmpi; this
+!     routine replaces it with the saved accepted eigenpairs without
+!     changing any in-memory state or the rollback counter.
+      INTEGER :: JBLOCK, NCF, I, J, NCMINPAT, NEVECPAT
+      INTEGER :: NELEC_FILE, NCFTOT_FILE, NW_FILE, NTMP1, NTMP2, NBLOCK_FILE
+      INTEGER :: IATTMP, IASTMP
+
+      IF (.NOT.ROUND_STATE_ACTIVE) RETURN
+      REWIND (25)
+      READ (25)
+      READ (25) NELEC_FILE, NCFTOT_FILE, NW_FILE, NTMP1, NTMP2, NBLOCK_FILE
+      BACKSPACE (25)
+      WRITE (25) NELEC_FILE, NCFTOT, NW, NCMIN, NVECSIZ, NBLOCK
+
+      DO JBLOCK = 1, NBLOCK
+         NCF = NCFBLK(JBLOCK)
+         NCMINPAT = NCMINPAST(JBLOCK)
+         NEVECPAT = NEVECPAST(JBLOCK)
+         IATTMP = ABS(JPGG(JBLOCK))
+         IF (JPGG(JBLOCK) >= 0) THEN
+            IASTMP = 1
+         ELSE
+            IASTMP = -1
+         ENDIF
+         WRITE (25) JBLOCK, NCF, NEVBLK(JBLOCK), IATTMP, IASTMP
+         WRITE (25) (ICCMIN_SAVE(I + NCMINPAT), I=1,NEVBLK(JBLOCK))
+         WRITE (25) EAVBLK_SAVE(JBLOCK),                              &
+                    (EVAL_SAVE(I + NCMINPAT), I=1,NEVBLK(JBLOCK))
+         WRITE (25) ((EVEC_SAVE(I + (J-1)*NCF + NEVECPAT),             &
+                     I=1,NCF), J=1,NEVBLK(JBLOCK))
+      END DO
+      END SUBROUTINE REWRITE_ROUND_MIX
 
       REAL(DOUBLE) FUNCTION LEVEL_ENERGY(STATE, ENERGIES, AVERAGES)
       INTEGER, INTENT(IN) :: STATE
@@ -187,10 +255,16 @@
       END FUNCTION LEVEL_ENERGY
 
       SUBROUTINE CHECK_VECTOR_OVERLAP(MIN_OVERLAP, NONIDENTITY)
+!     EVEC uses the same CSF ordering on both sides, so this coefficient
+!     dot product is a cheap root-continuity diagnostic.  PF/QF change during
+!     the round: without a biorthogonal orbital transformation it is not the
+!     many-electron ASF overlap and must not be used as proof that a term or
+!     dominant configuration is unchanged over many accepted rounds.
       REAL(DOUBLE), INTENT(OUT) :: MIN_OVERLAP
       LOGICAL, INTENT(OUT) :: NONIDENTITY
       INTEGER :: K, I, J, L, NCF, OFFSET, VOFFSET, OLD_STATE
-      INTEGER :: TARGET_ROWS_FOUND
+      INTEGER :: TARGET_OLD_STATE
+      INTEGER :: TARGET_ROWS_FOUND, TARGET_INDEX
       REAL(DOUBLE) :: OVERLAP
       REAL(DOUBLE), ALLOCATABLE :: OVERLAPS(:,:)
       INTEGER, ALLOCATABLE :: ASSIGNMENT(:)
@@ -204,6 +278,29 @@
       ALLOCATE(ROUND_ASSIGNMENT(NCMIN), STAT=IOS)
       IF (IOS /= 0) ERROR STOP 'ORBOPT: vector assignment allocation failed'
       ROUND_ASSIGNMENT = 0
+      IF (TARGET_STATE_COUNT > 0) THEN
+         IF (.NOT.ALLOCATED(ROUND_TARGET_ACCEPTED)) THEN
+            ALLOCATE(ROUND_TARGET_ACCEPTED(TARGET_STATE_COUNT), STAT=IOS)
+            IF (IOS /= 0) ERROR STOP 'ORBOPT: persistent target allocation failed'
+            ROUND_TARGET_ACCEPTED = TARGET_STATE_INDEX
+         ELSE IF (SIZE(ROUND_TARGET_ACCEPTED) /= TARGET_STATE_COUNT) THEN
+            ERROR STOP 'ORBOPT: persistent target size changed during SCF'
+         ENDIF
+         ALLOCATE(ROUND_TARGET_CURRENT(TARGET_STATE_COUNT),         &
+                  ROUND_TARGET_BLOCK(TARGET_STATE_COUNT),           &
+                  ROUND_TARGET_POSITION(TARGET_STATE_COUNT),        &
+                  ROUND_TARGET_OVERLAP(TARGET_STATE_COUNT),         &
+                  ROUND_TARGET_OLD_ENERGY(TARGET_STATE_COUNT),      &
+                  ROUND_TARGET_NEW_ENERGY(TARGET_STATE_COUNT),      &
+                  STAT=IOS)
+         IF (IOS /= 0) ERROR STOP 'ORBOPT: target diagnostic allocation failed'
+         ROUND_TARGET_CURRENT = 0
+         ROUND_TARGET_BLOCK = 0
+         ROUND_TARGET_POSITION = 0
+         ROUND_TARGET_OVERLAP = 0.D0
+         ROUND_TARGET_OLD_ENERGY = HUGE(1.D0)
+         ROUND_TARGET_NEW_ENERGY = HUGE(1.D0)
+      ENDIF
       OFFSET = 0
       VOFFSET = 0
       DO K = 1, NBLOCK
@@ -229,22 +326,40 @@
             ! A block can contain auxiliary roots that are intentionally
             ! allowed to rearrange while the requested physical states stay
             ! well tracked.  When a target list is supplied, apply the
-            ! overlap gate only to rows representing those target roots;
-            ! still retain the complete assignment for diagnostics and for
-            ! mapping target energies below.
+            ! overlap gate only to assignment columns representing those
+            ! old physical roots; still retain the complete assignment for
+            ! diagnostics and for mapping target energies below.
+            ! TARGET_STATE_INDEX contains old, physical root indices.  The
+            ! Hungarian assignment maps a candidate row (I) to its old root
+            ! column (OLD_STATE), so the target gate must follow the column.
+            ! Testing OFFSET+I here would inspect an unrelated root whenever
+            ! two roots exchange row positions.
             TARGET_ROW = TARGET_STATE_COUNT == 0
+            TARGET_INDEX = 0
             IF (.NOT.TARGET_ROW) THEN
                DO L = 1, TARGET_STATE_COUNT
-                  IF (TARGET_STATE_INDEX(L) == OFFSET + I) THEN
+                  TARGET_OLD_STATE = ROUND_TARGET_ACCEPTED(L)
+                  IF (TARGET_OLD_STATE == OFFSET + OLD_STATE) THEN
                      TARGET_ROW = .TRUE.
+                     TARGET_INDEX = L
                      EXIT
                   ENDIF
                END DO
             ENDIF
             IF (TARGET_ROW) THEN
                MIN_OVERLAP = MIN(MIN_OVERLAP, OVERLAP)
-               IF (TARGET_STATE_COUNT > 0) TARGET_ROWS_FOUND = &
-                    TARGET_ROWS_FOUND + 1
+               IF (TARGET_STATE_COUNT > 0) THEN
+                  TARGET_ROWS_FOUND = TARGET_ROWS_FOUND + 1
+                  ROUND_TARGET_CURRENT(TARGET_INDEX) = OFFSET + I
+                  ROUND_TARGET_BLOCK(TARGET_INDEX) = K
+                  ROUND_TARGET_POSITION(TARGET_INDEX) = I
+                  ROUND_TARGET_OVERLAP(TARGET_INDEX) = OVERLAP
+                  ROUND_TARGET_OLD_ENERGY(TARGET_INDEX) =           &
+                       LEVEL_ENERGY(OFFSET + OLD_STATE, EVAL_SAVE,  &
+                                    EAVBLK_SAVE)
+                  ROUND_TARGET_NEW_ENERGY(TARGET_INDEX) =           &
+                       LEVEL_ENERGY(OFFSET + I, EVAL, EAVBLK)
+               ENDIF
             ENDIF
             IF (OLD_STATE /= I) NONIDENTITY = .TRUE.
          END DO
@@ -271,11 +386,10 @@
       IF (IOS /= 0) ERROR STOP 'ORBOPT: target-order allocation failed'
       DO I = 1, TARGET_STATE_COUNT
          OLD_ORDER(I) = TARGET_STATE_INDEX(I)
-         OLD_ENERGY(I) = LEVEL_ENERGY(TARGET_STATE_INDEX(I), EVAL_SAVE, &
-                                      EAVBLK_SAVE)
+         OLD_ENERGY(I) = ROUND_TARGET_OLD_ENERGY(I)
          CURRENT_STATE = 0
          DO J = 1, NCMIN
-            IF (ROUND_ASSIGNMENT(J) == TARGET_STATE_INDEX(I)) THEN
+            IF (ROUND_ASSIGNMENT(J) == ROUND_TARGET_ACCEPTED(I)) THEN
                CURRENT_STATE = J
                EXIT
             ENDIF
@@ -283,7 +397,7 @@
          IF (CURRENT_STATE == 0) THEN
             NEW_ENERGY(I) = HUGE(1.D0)
          ELSE
-            NEW_ENERGY(I) = LEVEL_ENERGY(CURRENT_STATE, EVAL, EAVBLK)
+            NEW_ENERGY(I) = ROUND_TARGET_NEW_ENERGY(I)
          ENDIF
          NEW_ORDER(I) = TARGET_STATE_INDEX(I)
       END DO

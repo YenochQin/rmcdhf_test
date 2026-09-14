@@ -11,9 +11,9 @@
 
 !  Structure of the input sparse matrix hmx:
 !    . It's a 1-d array
-!    . Length: 1 to jcol(ncf)
-!    . Number of non-zero elements for column j is:
-!          jcol(j) - jcol(j-1) + 1
+!    . Only columns myid+1, myid+1+nprocs, ... are packed on this rank.
+!    . JCOL(j) is the local cumulative endpoint for an owned column j;
+!      entries for columns on other ranks are not endpoints in HMX.
 !    . Row index for element hmx(i) is irow(i)
 !  Xinghong He  98-10-28
 !
@@ -42,7 +42,7 @@
 !-----------------------------------------------
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
-      INTEGER :: NS, J, JOFFNORM, IR, NFOUND, INFO
+      INTEGER :: NS, JOFFSPAR, J, JOFFNORM, IR, NFOUND, INFO
 
       integer, dimension(:), pointer :: iwork,ifail
       real(double), dimension(:), pointer :: ap, eigval,vec, work
@@ -60,14 +60,15 @@
 
 !  Expand the sparse form to normal form for upper-right sub-matrix
 
-!     DO J = 1, NS
+      JOFFSPAR = 0
       DO j = myid + 1, ns, nprocs
          JOFFNORM = (J*(J - 1))/2                ! offset for normal form
-         ! JCOL is cumulative; ranks process strided columns, so the
-         ! sparse range must use the preceding endpoint of this column.
-         DO IR = JCOL(J-1) + 1, JCOL(J)
+         ! Continue after the previous locally stored column, not after
+         ! global column J-1 (which is owned by another rank).
+         DO IR = JOFFSPAR + 1, JCOL(J)
             AP(IROW(IR)+JOFFNORM) = HMX(IR)
          END DO
+         JOFFSPAR = JCOL(J)
       END DO
 
 !  Merge ap from all nodes and then send to all nodes

@@ -57,13 +57,11 @@
 !
       CALL DINIT (N*M, 0.0D00, C, 1)
 
+      ! MATRIXmpi packs only this rank's columns in EMT/IROW and fills
+      ! IENDC only at owned global column indices.  The preceding global
+      ! column belongs to another rank; its endpoint is not a local offset.
+      IBEG = 1
       DO ICOL = myid + 1, N, nprocs
-         ! IENDC is a cumulative sparse-column index.  The local
-         ! columns are strided across ranks, so the beginning of each
-         ! column must be recomputed from its own preceding endpoint;
-         ! carrying IBEG from the previous local column would include
-         ! entries belonging to the skipped columns.
-         IBEG = IENDC(ICOL-1) + 1
          IEND = IENDC(ICOL)
          NELC = IEND - IBEG + 1
          DO IV = 1, M
@@ -72,6 +70,7 @@
                          IROW(IBEG),EMT(IBEG),B(ICOL,IV),DL)
             C(ICOL,IV) = DIAG + DL
          ENDDO
+         IBEG = IEND + 1
       ENDDO
 
       CALL gdsummpi (C, N*M)

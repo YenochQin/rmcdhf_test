@@ -54,10 +54,12 @@
                                   MIN_STATE_OVERLAP
       USE ORBOPT_TRACE_C, ONLY: TRACE_SCF_BEGIN, TRACE_SCF_END,     &
                                 TRACE_MPI_SUMMARY, CLOSE_ORBOPT_TRACE,&
-                                TRACE_ROUND_DECISION
+                                TRACE_ROUND_DECISION, TRACE_ROUND_TARGETS
       USE ORBOPT_ROUND_STATE_C, ONLY: BEGIN_ORBOPT_ROUND,           &
                                       CHECK_ORBOPT_ROUND,            &
                                       RESTORE_ORBOPT_ROUND,          &
+                                      ACCEPT_ORBOPT_ROUND,           &
+                                      REWRITE_ROUND_MIX,             &
                                       END_ORBOPT_ROUND,               &
                                       ROUND_ROLLBACK_COUNT
 !-----------------------------------------------
@@ -281,12 +283,30 @@
             CALL CHECK_ORBOPT_ROUND(ROUND_BAD, ROUND_MIN_OVERLAP,  &
                  ROUND_ORDER_CHANGED, ROUND_NONIDENTITY, ROUND_DETAIL)
             ROUND_IDENTITY_STABLE = ROUND_MIN_OVERLAP >= MIN_STATE_OVERLAP
+            CALL TRACE_ROUND_TARGETS(NIT)
             IF (ROUND_BAD) THEN
                CALL TRACE_ROUND_DECISION(NIT, .FALSE.,             &
                     ROUND_MIN_OVERLAP, ROUND_ORDER_CHANGED,       &
                     ROUND_NONIDENTITY, ROUND_ROLLBACK_COUNT + 1,   &
                     ROUND_DETAIL)
                CALL RESTORE_ORBOPT_ROUND
+               ! The candidate was written to the ordinary .rwf/.mix
+               ! outputs before it could be checked.  Restore the accepted
+               ! state to disk before either continuing or aborting at the
+               ! rollback limit; otherwise a failed run leaves a rejected
+               ! wavefunction that can be mistaken for a restart input.
+               IF (MYID == 0) THEN
+                  CALL ORBOUT(RWFFILE2)
+                  IF (SAVE_RWFN_ITERATIONS) THEN
+                     WRITE (RWF_SNAPSHOT,'(A,".iter",I3.3)')    &
+                          TRIM(RWFFILE2), NIT
+                     CALL ORBOUT(TRIM(RWF_SNAPSHOT))
+                  ENDIF
+               ENDIF
+               ! Replace the candidate .mix with the accepted snapshot.
+               ! Calling MATRIXmpi here would diagonalise and damp again;
+               ! REWRITE_ROUND_MIX serialises the saved eigenpairs directly.
+               IF (MYID == 0) CALL REWRITE_ROUND_MIX
                IF (ROUND_ROLLBACK_COUNT > MAX_ROUND_ROLLBACKS) THEN
                   IF (MYID == 0) WRITE (ISTDE,'(A,I0)')           &
                      'SCFmpi: round rollback limit exceeded: ',    &
@@ -302,14 +322,6 @@
                ENERGY_VALID = .FALSE.
                ROUND_IDENTITY_STABLE = .FALSE.
                STRICT_STREAK = 0
-               IF (MYID == 0) THEN
-                  CALL ORBOUT(RWFFILE2)
-                  IF (SAVE_RWFN_ITERATIONS) THEN
-                     WRITE (RWF_SNAPSHOT,'(A,".iter",I3.3)')    &
-                          TRIM(RWFFILE2), NIT
-                     CALL ORBOUT(TRIM(RWF_SNAPSHOT))
-                  ENDIF
-               ENDIF
                CALL TRACE_SCF_END(NIT, CONVG_ORBITAL,             &
                     CONVG_ENERGY, CONVG_LEGACY, CONVG_STRICT,    &
                     CONVG, ENERGY_VALID, STRICT_STREAK,           &
@@ -318,6 +330,7 @@
                CALL TRACE_MPI_SUMMARY(NIT)
                CYCLE
             ELSE
+               CALL ACCEPT_ORBOPT_ROUND
                CALL TRACE_ROUND_DECISION(NIT, .TRUE.,              &
                     ROUND_MIN_OVERLAP, ROUND_ORDER_CHANGED,        &
                     ROUND_NONIDENTITY, ROUND_ROLLBACK_COUNT,       &

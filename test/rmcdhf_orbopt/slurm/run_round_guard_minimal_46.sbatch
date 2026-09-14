@@ -52,12 +52,13 @@ run_case() {
   local case_out=$out/$name
   local target_states=${GRASP_ROUND_TARGET_STATES:-}
   case $name in
-    # The target 3F_J roots are global states 3,4,7 for both Ni fixtures.
+    # Both Ni fixtures have J=0,1,2,3,4 blocks with 2,1,3,1,2 roots.
+    # Their J=2,3,4 first roots are global states 4,7,8; 3,4,7 was wrong.
     # Cl I has one root per block,
     # so its two physical levels are global states 1,2.  Callers can override
     # these defaults when changing the ASF selection.
-    ni_i_as2) target_states=${GRASP_ROUND_TARGET_STATES_NI_I:-3,4,7} ;;
-    ni_ca_like_as2) target_states=${GRASP_ROUND_TARGET_STATES_NICA:-3,4,7} ;;
+    ni_i_as2) target_states=${GRASP_ROUND_TARGET_STATES_NI_I:-4,7,8} ;;
+    ni_ca_like_as2) target_states=${GRASP_ROUND_TARGET_STATES_NICA:-4,7,8} ;;
     cl_i_as1) target_states=${GRASP_ROUND_TARGET_STATES_CL_I:-1,2} ;;
   esac
   local stage=2

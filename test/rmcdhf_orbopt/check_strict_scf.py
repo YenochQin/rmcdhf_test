@@ -73,8 +73,13 @@ def validate(rows: list[dict[str, str]], mode: str) -> None:
         raise ValueError("the first SCF iteration must not have a prior energy")
 
     final_rows = [row for row in rows if flag(row, "convg_final")]
+    if not final_rows:
+        raise ValueError(
+            f"SCF reached its iteration limit without {mode} convergence "
+            f"(last iteration {rows[-1]['iteration']})"
+        )
     if len(final_rows) != 1 or final_rows[0] is not rows[-1]:
-        raise ValueError("exactly the last scf_end row must be final")
+        raise ValueError("only the last scf_end row may be final")
 
     for row in rows:
         orbital = flag(row, "convg_orbital")

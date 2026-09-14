@@ -15,3 +15,13 @@ add_executable(test.lib9290_quad
 )
 target_link_libraries_Fortran(test.lib9290_quad PUBLIC mod 9290)
 add_test(lib9290_quad test.lib9290_quad)
+
+if(MPI_Fortran_FOUND)
+    # Calls the production sparse kernels with rank-local column buffers.
+    # The test supplies a checked reduction seam, so no MPI job is launched.
+    add_executable(test.mpi90_local_sparse mpi90_local_sparse.f90)
+    target_link_libraries_Fortran(test.mpi90_local_sparse PUBLIC mpiu90 mod 9290)
+    add_test(mpi90_local_sparse test.mpi90_local_sparse)
+    set_tests_properties(mpi90_local_sparse PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+endif()

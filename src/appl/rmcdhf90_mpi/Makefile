@@ -4,9 +4,9 @@ FC_MODULES= -I ${GRASP}/src/lib/libdvd90 -I ${GRASP}/src/lib/mpi90 -I ${GRASP}/s
 
 OBJS= \
 	orbopt_control.o \
+	orbopt_round_state.o \
 	orbopt_trace.o \
 	orbopt_metrics.o \
-	orbopt_round_state.o \
 	dsubrs.o \
 	dsubrs_I.o \
 	fco.o \

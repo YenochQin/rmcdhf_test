@@ -156,18 +156,54 @@ The SCF-round guard can scope its CI identity and energy-order checks to the
 physical roots that must retain their meaning.  `GRASP_ROUND_TARGET_STATES`
 is a comma/space/semicolon/colon-separated list of **1-based global state
 indices** in the `NEWCOmpi` order.  The minimal 46-rank probe supplies
-`3,4,7` for the Ni fixtures (the J=2, J=3, and J=4 roots of the target
+`4,7,8` for the Ni fixtures (the J=2, J=3, and J=4 roots of the target
 `^3F_J` sequence) and `1,2` for Cl I; set the per-case variables
 `GRASP_ROUND_TARGET_STATES_NI_I`, `GRASP_ROUND_TARGET_STATES_NICA`, or
 `GRASP_ROUND_TARGET_STATES_CL_I` when the ASF selection changes.  With a
 target list, low CI overlap in untracked auxiliary roots remains diagnostic
 but does not reject an otherwise stable target set.  The complete assignment
-is still recorded so root crossings can be audited.
+is retained in memory; `round_nonidentity` reports any permutation and
+`round_target` records each target's mapping.
+The reported value is the absolute dot product of CI coefficient vectors in
+the unchanged CSF ordering. Because the radial orbitals change between rounds,
+it is a root-continuity proxy, not a biorthogonal many-electron ASF overlap.
+Use final LSJ/dominant-configuration checks and a fixed-reference comparison
+to detect accumulated term drift.
 
 Run the offline assignment/target-order checks without submitting a job:
 
 ```sh
 python3 test/rmcdhf_orbopt/test_round_state_logic.py
+```
+
+The target overlap gate follows the old-root column of the per-block
+Hungarian assignment.  This matters when a candidate exchanges row positions
+with another CI root: target states are specified by their previous global
+state indices, so measuring the candidate row would test the wrong root.  When
+round tracing is enabled, each guarded iteration also emits `round_target`
+rows.  In those rows `index` is the old target state, `index2` is its mapped
+candidate row, `position` is the candidate position within the block,
+`energy_old`, `energy_candidate`, and `overlap` are the mapped diagnostics,
+and `detail` records the block mapping, `2J`, and parity. Both Ni fixtures have
+J=0,1,2,3,4 blocks with 2,1,3,1,2 selected roots. Jobs 639/640/642 used incorrect
+target indices; `3,4,7` select J=1,2,3 and omit J=4. Their Ni results also used
+the faulty sparse-column build from Job 609 and are not physical baselines.
+After an accepted row exchange, the guard carries the mapped row into the next
+round while retaining the initial target index as its diagnostic label.  A
+rejected candidate does not advance that mapping.
+
+Job 643 confirmed that the corrected 46-rank initial CI is bit-for-bit equal in
+energy to Job 631, but it reached 100 iterations without strict orbital
+convergence.  Its all-new Ni I AS2 path is therefore regression evidence for
+the sparse matrix and identity checks, not a converged physical baseline.
+
+The sparse storage check calls the production `SPICMVmpi` and `INIESTmpi`
+routines on a known 8x8 matrix packed into rank-local buffers. It checks matrix
+products and packed entries against the dense matrix; the reduction is
+replaced with a checked test seam, so this does not launch an MPI calculation:
+
+```sh
+ctest --test-dir build -R '^mpi90_local_sparse$' --output-on-failure
 ```
 
 Guard thresholds are configured with `GRASP_MIN_ORBITAL_OVERLAP`,

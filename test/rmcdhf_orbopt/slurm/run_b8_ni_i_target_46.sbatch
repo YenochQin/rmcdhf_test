@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Ni I AS2 EOL state-set test using only the target state in each block.
+# Ni I AS2 reduced-ASF EOL test using the first state in every J block.
 #SBATCH -J rmcdhf-b8-ni-target
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=46
