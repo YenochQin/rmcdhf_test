@@ -12,6 +12,8 @@ scientific examples and regression-style workflows are under
 
 ## Build, Test, and Development Commands
 
+All Python helper scripts, audits, and Python-based tests in this repository must use `../graspkit-tools/.venv`, the workspace's single Python environment created and synchronized by running `uv sync` in `graspkit-tools/`. Do not run `uv venv`, `uv sync`, or `uv run` here, and do not create, activate, or use `rmcdhf_test/.venv`. Activate the shared environment with `source ../graspkit-tools/.venv/bin/activate` before invoking Python tooling. This does not replace the Fortran, CMake, compiler, BLAS, or MPI setup described below.
+
 Before configuring or compiling, initialize the MPI toolchain in the shell:
 
 ```sh
