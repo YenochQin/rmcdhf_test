@@ -25,3 +25,10 @@ if(MPI_Fortran_FOUND)
     set_tests_properties(mpi90_local_sparse PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
 endif()
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME rmcdhf_orbopt_round_state_logic
+        COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/rmcdhf_orbopt/test_round_state_logic.py)
+endif()

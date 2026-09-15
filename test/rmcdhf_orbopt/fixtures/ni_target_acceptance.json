@@ -1,0 +1,41 @@
+{
+  "expected_energy_order": ["3F4", "3F3", "3F2"],
+  "levels_csv": "fixed_rci/baseline_rci.csv",
+  "max_anchor_node_delta": 1,
+  "max_anchor_radius_factor": 20.0,
+  "min_anchor_orbital_overlap_proxy": 0.005,
+  "min_anchor_subspace_proxy": 0.85,
+  "require_baseline_improvement": true,
+  "reference_intervals_cm1": {
+    "3F2": 2216.550,
+    "3F3": 1332.164
+  },
+  "reference_source": "nist-data ASD export: Ni I 3d8.(3F).4s2 ground term",
+  "require_strict_convergence": true,
+  "restart_wave": "e1_vv2as2.w",
+  "require_fixed_reference_proxy": true,
+  "target_state_indices": [5, 4, 3],
+  "target_levels": [
+    {
+      "configuration_contains": "3d8^3F4s2",
+      "label": "3F4",
+      "lsj": "^{3}\\mathrm{F}_{4}",
+      "min_reference_weight": 0.85,
+      "parity": "+"
+    },
+    {
+      "configuration_contains": "3d8^3F4s2",
+      "label": "3F3",
+      "lsj": "^{3}\\mathrm{F}_{3}",
+      "min_reference_weight": 0.85,
+      "parity": "+"
+    },
+    {
+      "configuration_contains": "3d8^3F4s2",
+      "label": "3F2",
+      "lsj": "^{3}\\mathrm{F}_{2}",
+      "min_reference_weight": 0.85,
+      "parity": "+"
+    }
+  ]
+}

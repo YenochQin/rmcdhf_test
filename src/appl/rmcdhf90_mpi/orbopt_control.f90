@@ -21,17 +21,23 @@
       LOGICAL :: TRACE_INITIAL_ORBITALS = .FALSE.
       LOGICAL :: ROUND_ROLLBACK_GUARD = .FALSE.
       LOGICAL :: ROUND_REJECT_ENERGY_ORDER = .FALSE.
+      LOGICAL :: FIXED_REFERENCE_PROXY = .FALSE.
       INTEGER :: ORBOPT_TRACE_UNIT = 735
       INTEGER :: ORBOPT_ITERATION = 0
       INTEGER :: MAX_ROUND_ROLLBACKS = 3
       INTEGER :: TARGET_STATE_COUNT = 0
       CHARACTER(LEN=256) :: ORBOPT_TRACE_DIRECTORY = ''
       CHARACTER(LEN=1024) :: TARGET_STATE_SPEC = ''
+      CHARACTER(LEN=1024) :: TARGET_STATE_LABEL_SPEC = ''
+      CHARACTER(LEN=128) :: ANCHOR_ID = ''
+      CHARACTER(LEN=32) :: ANCHOR_TYPE = ''
+      CHARACTER(LEN=128) :: ANCHOR_HASH = ''
       INTEGER, ALLOCATABLE :: TARGET_STATE_INDEX(:)
       REAL(DOUBLE) :: FIXED_ORBITAL_DAMPING = 0.D0
       REAL(DOUBLE) :: MIN_ORBITAL_OVERLAP = 0.1D0
       REAL(DOUBLE) :: MAX_RADIUS_RATIO = 10.D0
       REAL(DOUBLE) :: MIN_STATE_OVERLAP = 0.85D0
+      REAL(DOUBLE) :: MIN_ANCHOR_SUBSPACE_PROXY = 0.D0
       REAL(DOUBLE) :: COUNT_THRESH_OVERRIDE = -1.D0
       REAL(DOUBLE) :: ACCY_OVERRIDE = -1.D0
       INTEGER :: MAX_REJECTS_PER_ORBITAL = 3
@@ -63,6 +69,8 @@
                                ROUND_ROLLBACK_GUARD)
          CALL READ_LOGICAL_ENV('GRASP_ROUND_REJECT_ENERGY_ORDER', &
                                ROUND_REJECT_ENERGY_ORDER)
+         CALL READ_LOGICAL_ENV('GRASP_FIXED_REFERENCE_PROXY',      &
+                               FIXED_REFERENCE_PROXY)
          CALL READ_REAL_ENV('GRASP_ORBITAL_DAMPING',                &
                             FIXED_ORBITAL_DAMPING)
          CALL READ_REAL_ENV('GRASP_MIN_ORBITAL_OVERLAP',            &
@@ -70,6 +78,8 @@
          CALL READ_REAL_ENV('GRASP_MAX_RADIUS_RATIO',               &
                             MAX_RADIUS_RATIO)
          CALL READ_REAL_ENV('GRASP_MIN_STATE_OVERLAP', MIN_STATE_OVERLAP)
+         CALL READ_REAL_ENV('GRASP_MIN_ANCHOR_SUBSPACE_PROXY',     &
+                            MIN_ANCHOR_SUBSPACE_PROXY)
          CALL READ_REAL_ENV('GRASP_COUNT_THRESH', COUNT_THRESH_OVERRIDE)
          CALL READ_REAL_ENV('GRASP_COUNT_ACCY', ACCY_OVERRIDE)
          CALL READ_INTEGER_ENV('GRASP_MAX_REJECTS_PER_ORBITAL',     &
@@ -78,6 +88,11 @@
                                MAX_ROUND_ROLLBACKS)
          CALL READ_STRING_ENV('GRASP_ROUND_TARGET_STATES',          &
                               TARGET_STATE_SPEC)
+         CALL READ_STRING_ENV('GRASP_TARGET_STATE_LABELS',          &
+                              TARGET_STATE_LABEL_SPEC)
+         CALL READ_STRING_ENV('GRASP_ANCHOR_ID', ANCHOR_ID)
+         CALL READ_STRING_ENV('GRASP_ANCHOR_TYPE', ANCHOR_TYPE)
+         CALL READ_STRING_ENV('GRASP_ANCHOR_HASH', ANCHOR_HASH)
          CALL READ_LOGICAL_ENV('GRASP_REJECT_NODE_CHANGE',          &
                                REJECT_NODE_CHANGE)
 
@@ -103,6 +118,12 @@
             WRITE (*,'(A)') 'ORBOPT: state overlap threshold must be in'//&
                              ' [0,1]; using 0.85'
             MIN_STATE_OVERLAP = 0.85D0
+         ENDIF
+         IF (MIN_ANCHOR_SUBSPACE_PROXY < 0.D0 .OR.                 &
+             MIN_ANCHOR_SUBSPACE_PROXY > 1.D0) THEN
+            WRITE (*,'(A)') 'ORBOPT: anchor proxy threshold must be in'//&
+                             ' [0,1]; using diagnostic-only value 0'
+            MIN_ANCHOR_SUBSPACE_PROXY = 0.D0
          ENDIF
          IF (MAX_REJECTS_PER_ORBITAL < 1) THEN
             WRITE (*,'(A)') 'ORBOPT: max rejects must be positive;'//&
@@ -140,6 +161,8 @@
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(ROUND_REJECT_ENERGY_ORDER, 1, MPI_LOGICAL, 0, &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(FIXED_REFERENCE_PROXY, 1, MPI_LOGICAL, 0,     &
+                     MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(FIXED_ORBITAL_DAMPING, 1,                     &
                      MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(MIN_ORBITAL_OVERLAP, 1, MPI_DOUBLE_PRECISION, &
@@ -148,6 +171,8 @@
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(MIN_STATE_OVERLAP, 1, MPI_DOUBLE_PRECISION, 0, &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(MIN_ANCHOR_SUBSPACE_PROXY, 1,                 &
+                     MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(COUNT_THRESH_OVERRIDE, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(ACCY_OVERRIDE, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(MAX_REJECTS_PER_ORBITAL, 1, MPI_INTEGER, 0,   &
@@ -156,6 +181,15 @@
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(REJECT_NODE_CHANGE, 1, MPI_LOGICAL, 0,        &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(ANCHOR_ID, LEN(ANCHOR_ID), MPI_CHARACTER, 0,  &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(TARGET_STATE_LABEL_SPEC,                       &
+                     LEN(TARGET_STATE_LABEL_SPEC), MPI_CHARACTER, 0,&
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(ANCHOR_TYPE, LEN(ANCHOR_TYPE), MPI_CHARACTER, &
+                     0, MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(ANCHOR_HASH, LEN(ANCHOR_HASH), MPI_CHARACTER, &
+                     0, MPI_COMM_WORLD, ierr)
       ORBITAL_REJECT_COUNT = 0
 
       IF (myid == 0 .AND. (TRACE_ORBOPT .OR. SAVE_RWFN_ITERATIONS .OR. &
@@ -163,14 +197,15 @@
           GUARD_AFTER_DAMPING .OR.                                  &
           NODE_PROGRESS_GUARD .OR.                                  &
           STRICT_SCF_CONVERGENCE .OR. DEFER_ORTHOGONALIZATION .OR. &
-          STRICT_METHOD3 .OR. ROUND_ROLLBACK_GUARD)) THEN
-         WRITE (*,'(A,10(1X,L1))') 'ORBOPT controls:',              &
+          STRICT_METHOD3 .OR. ROUND_ROLLBACK_GUARD .OR.             &
+          FIXED_REFERENCE_PROXY)) THEN
+         WRITE (*,'(A,11(1X,L1))') 'ORBOPT controls:',              &
             TRACE_ORBOPT, REQUIRE_BALANCED_PAIR,                   &
             ENABLE_ORBITAL_GUARD, GUARD_AFTER_DAMPING,              &
             STRICT_SCF_CONVERGENCE,                                 &
             SAVE_RWFN_ITERATIONS, DEFER_ORTHOGONALIZATION,         &
             STRICT_METHOD3, ROUND_ROLLBACK_GUARD,                   &
-            ROUND_REJECT_ENERGY_ORDER
+            ROUND_REJECT_ENERGY_ORDER, FIXED_REFERENCE_PROXY
       ENDIF
       IF (myid == 0 .AND. NODE_PROGRESS_GUARD) THEN
          WRITE (*,'(A)') 'ORBOPT node guard: non-worsening distance to NNODEP'

@@ -36,7 +36,8 @@ out=$root/data/rmcdhf_test_data/results/round-guard-minimal-${SLURM_JOB_ID}
 mkdir -p "$out"
 printf 'case,runner_exit,rmcdhf_exit,convergence_exit,trace,final_csv,outcome\n' > "$out/status.csv"
 
-common=(GRASP_TRACE_ORBOPT=1 GRASP_TRACE_INITIAL_ORBITALS=1 \
+common=(GRASP_ALLOW_UNBALANCED=1 \
+  GRASP_TRACE_ORBOPT=1 GRASP_TRACE_INITIAL_ORBITALS=1 \
   GRASP_TRACE_RWFN=1 GRASP_ROUND_ROLLBACK_GUARD=1 \
   GRASP_ROUND_REJECT_ENERGY_ORDER=1 GRASP_MIN_STATE_OVERLAP=0.85 \
   GRASP_MAX_ROUND_ROLLBACKS=3 GRASP_STRICT_SCF=1 \

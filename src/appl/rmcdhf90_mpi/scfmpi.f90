@@ -56,6 +56,7 @@
                                 TRACE_MPI_SUMMARY, CLOSE_ORBOPT_TRACE,&
                                 TRACE_ROUND_DECISION, TRACE_ROUND_TARGETS
       USE ORBOPT_ROUND_STATE_C, ONLY: BEGIN_ORBOPT_ROUND,           &
+                                      INITIALIZE_FIXED_REFERENCE,    &
                                       CHECK_ORBOPT_ROUND,            &
                                       RESTORE_ORBOPT_ROUND,          &
                                       ACCEPT_ORBOPT_ROUND,           &
@@ -193,6 +194,7 @@
       IF (EOL) THEN
          CALL MATRIXmpi (dvdfirst)
          CALL NEWCOmpi (WTAEV)
+         CALL INITIALIZE_FIXED_REFERENCE(EOL)
       ENDIF
       WTAEV0 = 0.0
       STRICT_STREAK = 0

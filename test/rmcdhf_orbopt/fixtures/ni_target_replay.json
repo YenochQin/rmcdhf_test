@@ -1,0 +1,27 @@
+{
+  "expected_energy_order": ["3F4", "3F3", "3F2"],
+  "require_strict_convergence": true,
+  "target_levels": [
+    {
+      "configuration_contains": "3d8^3F4s2",
+      "label": "3F4",
+      "lsj": "^{3}\\mathrm{F}_{4}",
+      "min_reference_weight": 0.85,
+      "parity": "+"
+    },
+    {
+      "configuration_contains": "3d8^3F4s2",
+      "label": "3F3",
+      "lsj": "^{3}\\mathrm{F}_{3}",
+      "min_reference_weight": 0.85,
+      "parity": "+"
+    },
+    {
+      "configuration_contains": "3d8^3F4s2",
+      "label": "3F2",
+      "lsj": "^{3}\\mathrm{F}_{2}",
+      "min_reference_weight": 0.85,
+      "parity": "+"
+    }
+  ]
+}

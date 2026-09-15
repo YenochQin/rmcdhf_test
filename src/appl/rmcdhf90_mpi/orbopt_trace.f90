@@ -22,10 +22,13 @@
             ROUND_TARGET_ACCEPTED,                                &
             ROUND_TARGET_BLOCK, ROUND_TARGET_POSITION,             &
             ROUND_TARGET_OVERLAP, ROUND_TARGET_OLD_ENERGY,         &
-            ROUND_TARGET_NEW_ENERGY
+            ROUND_TARGET_NEW_ENERGY,                               &
+            ANCHOR_TARGET_COEFFICIENT_PROXY,                       &
+            ANCHOR_TARGET_SUBSPACE_MIN,                            &
+            ANCHOR_TARGET_SUBSPACE_ANGLE
       IMPLICIT NONE
 
-      INTEGER, PARAMETER :: TRACE_FIELD_COUNT = 70
+      INTEGER, PARAMETER :: TRACE_FIELD_COUNT = 81
       INTEGER, PARAMETER :: TRACE_FIELD_LENGTH = 128
       LOGICAL :: TRACE_OPEN = .FALSE.
 
@@ -64,6 +67,11 @@
       CALL PUT_INTEGER(FIELDS(67), MAX_ROUND_ROLLBACKS)
       CALL PUT_INTEGER(FIELDS(68), TARGET_STATE_COUNT)
       CALL PUT_LOGICAL(FIELDS(69), TARGET_STATE_COUNT > 1)
+      CALL PUT_REAL(FIELDS(80), MIN_ANCHOR_SUBSPACE_PROXY)
+      CALL PUT_LOGICAL(FIELDS(81), FIXED_REFERENCE_PROXY)
+      FIELDS(77) = ANCHOR_ID
+      FIELDS(78) = ANCHOR_TYPE
+      FIELDS(79) = ANCHOR_HASH
       IF (TARGET_STATE_COUNT > 0) THEN
          FIELDS(40) = 'target_states='//TRIM(TARGET_STATE_SPEC)
       ENDIF
@@ -101,7 +109,13 @@
          'round_nonidentity,round_rollback_count,round_min_overlap,' // &
          'round_guard_enabled,round_reject_energy_order,' //       &
          'min_state_overlap,max_round_rollbacks,target_state_count,' // &
-         'target_order_scoped,round_identity_stable'
+         'target_order_scoped,round_identity_stable,' //          &
+         'fixed_target_label,current_row,' //                      &
+         'adjacent_coefficient_proxy,anchor_coefficient_proxy,' // &
+         'subspace_min_singular_value_proxy,' //                   &
+         'subspace_max_principal_angle_degrees_proxy,' //          &
+         'anchor_id,anchor_type,anchor_hash,' //                    &
+         'min_anchor_subspace_proxy,fixed_reference_proxy_enabled'
       END SUBROUTINE WRITE_TRACE_HEADER
 
       SUBROUTINE CLEAR_TRACE_FIELDS(FIELDS, EVENT, NIT)
@@ -182,6 +196,31 @@
          FIELD = 'correlation'
       ENDIF
       END SUBROUTINE PUT_ORBITAL_GROUP
+
+      SUBROUTINE PUT_TARGET_STATE_LABEL(FIELD, POSITION)
+      CHARACTER(LEN=*), INTENT(OUT) :: FIELD
+      INTEGER, INTENT(IN) :: POSITION
+      INTEGER :: CURRENT, FIRST, SEPARATOR
+      FIELD = ''
+      FIRST = 1
+      CURRENT = 1
+      DO WHILE (FIRST <= LEN_TRIM(TARGET_STATE_LABEL_SPEC))
+         SEPARATOR = INDEX(TARGET_STATE_LABEL_SPEC(FIRST:), ',')
+         IF (CURRENT == POSITION) THEN
+            IF (SEPARATOR == 0) THEN
+               FIELD = ADJUSTL(TARGET_STATE_LABEL_SPEC(FIRST:))
+            ELSE
+               FIELD = ADJUSTL(TARGET_STATE_LABEL_SPEC(            &
+                                FIRST:FIRST+SEPARATOR-2))
+            ENDIF
+            RETURN
+         ENDIF
+         IF (SEPARATOR == 0) EXIT
+         FIRST = FIRST + SEPARATOR
+         CURRENT = CURRENT + 1
+      END DO
+      CALL PUT_INTEGER(FIELD, TARGET_STATE_INDEX(POSITION))
+      END SUBROUTINE PUT_TARGET_STATE_LABEL
 
       SUBROUTINE TRACE_ORBITAL_SELECTION
       CHARACTER(LEN=TRACE_FIELD_LENGTH) :: FIELDS(TRACE_FIELD_COUNT)
@@ -426,6 +465,19 @@
          CALL PUT_REAL(FIELDS(18), ROUND_TARGET_OLD_ENERGY(I))
          CALL PUT_REAL(FIELDS(19), ROUND_TARGET_NEW_ENERGY(I))
          CALL PUT_REAL(FIELDS(39), ROUND_TARGET_OVERLAP(I))
+         CALL PUT_TARGET_STATE_LABEL(FIELDS(71), I)
+         CALL PUT_INTEGER(FIELDS(72), ROUND_TARGET_CURRENT(I))
+         CALL PUT_REAL(FIELDS(73), ROUND_TARGET_OVERLAP(I))
+         IF (ALLOCATED(ANCHOR_TARGET_COEFFICIENT_PROXY)) THEN
+            CALL PUT_REAL(FIELDS(74), ANCHOR_TARGET_COEFFICIENT_PROXY(I))
+            CALL PUT_REAL(FIELDS(75), ANCHOR_TARGET_SUBSPACE_MIN(I))
+            CALL PUT_REAL(FIELDS(76), ANCHOR_TARGET_SUBSPACE_ANGLE(I))
+         ENDIF
+         FIELDS(77) = ANCHOR_ID
+         FIELDS(78) = ANCHOR_TYPE
+         FIELDS(79) = ANCHOR_HASH
+         CALL PUT_REAL(FIELDS(80), MIN_ANCHOR_SUBSPACE_PROXY)
+         CALL PUT_LOGICAL(FIELDS(81), FIXED_REFERENCE_PROXY)
          WRITE (DETAIL,'(A,I0,A,I0,A,I0,A,I0)')                    &
             'target=', TARGET_STATE_INDEX(I), ' accepted=',        &
             ROUND_TARGET_ACCEPTED(I), ' current=',                 &

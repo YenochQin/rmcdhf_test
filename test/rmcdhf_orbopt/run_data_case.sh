@@ -50,9 +50,18 @@ if [[ -e $output_dir ]]; then
     echo "output directory already exists: $output_dir" >&2
     exit 2
 fi
+stage_transaction=0
+case ${GRASP_STAGE_TRANSACTION:-0} in
+    1|true|TRUE|yes|YES|on|ON) stage_transaction=1 ;;
+esac
+stage_root=
+stage_config=${GRASP_STAGE_CONFIG:-}
+stage_rci_stdin=${GRASP_STAGE_RCI_STDIN:-}
+previous_stage=${GRASP_PREVIOUS_STAGE:-}
 rmcdhf_bindir=${GRASP_RMCDHF_MPI_BINDIR:-${GRASP_BINDIR:-$repo_root/build-debug/bin}}
 graspkit_tools=${GRASPKITTOOLS:-$repo_root/../graspkit-tools}
 graspkit_python=${GRASPKIT_PYTHON:-$graspkit_tools/.venv/bin/python}
+stage_guard=$graspkit_tools/scripts/grasp_regular_cal/orbopt_stage_guard.py
 max_stage=2
 asf_selection=$'1-2\n1\n1-3\n1\n1-2'
 isodata_source=
@@ -270,10 +279,79 @@ varied=${!varied_name}
 if [[ ${GRASP_VARIED_OVERRIDE+x} ]]; then
     varied=$GRASP_VARIED_OVERRIDE
 fi
+previous_wave=${GRASP_PREVIOUS_WAVE:-$source_dir/$wave_name}
+if [[ ! -f $previous_wave ]]; then
+    echo "previous wavefunction does not exist: $previous_wave" >&2
+    exit 2
+fi
+if (( stage_transaction )); then
+    if [[ -z $stage_config || ! -f $stage_config ]]; then
+        echo "GRASP_STAGE_CONFIG must name a case acceptance JSON file" >&2
+        exit 2
+    fi
+    if [[ -z $stage_rci_stdin || ! -f $stage_rci_stdin ]]; then
+        echo "stage transaction requires GRASP_STAGE_RCI_STDIN" >&2
+        exit 2
+    fi
+    stage_root=$output_dir
+    anchor_type=${GRASP_ANCHOR_TYPE:-tf_baseline}
+    prepare_args=(
+        "$stage_root" --case "$case_name" --stage "AS$stage"
+        --anchor-type "$anchor_type" --csf "$source_dir/$rcsf_name"
+        --previous-wave "$previous_wave" --acceptance-config "$stage_config"
+        --rci-stdin "$stage_rci_stdin"
+        --target-state-spec "${GRASP_ROUND_TARGET_STATES:-}"
+        --state-selection "$asf_selection" --weights "$level_weight"
+    )
+    if [[ -n $previous_stage ]]; then
+        prepare_args+=(--previous-stage "$previous_stage")
+    fi
+    "$graspkit_python" "$stage_guard" prepare-stage \
+        "${prepare_args[@]}" \
+        >/dev/null
+    output_dir=$stage_root/candidate
+    stage_rci_stdin=$stage_root/anchor/rci.stdin
+    GRASP_TARGET_STATE_LABELS=$(python3 -c \
+        'import json,sys; print(",".join(str(item["label"]) for item in json.load(open(sys.argv[1]))["target_levels"]))' \
+        "$stage_config")
+    export GRASP_TARGET_STATE_LABELS
+    export GRASP_FIXED_REFERENCE_PROXY=1
+fi
 
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 mpi_tmp=${GRASP_MPI_TMP:-/home/workstation2/caltmp}
+runner_stage=input_setup
+runner_status=running
+record_runner_status() {
+    local runner_exit=$?
+    local rmcdhf_exit=not_run
+    [[ -f $output_dir/rmcdhf.exitcode ]] && rmcdhf_exit=$(<"$output_dir/rmcdhf.exitcode")
+    printf '%s\n' "$runner_exit" > "$output_dir/runner.exitcode"
+    if (( runner_exit == 0 )); then
+        runner_status=complete
+    elif [[ $runner_status == running ]]; then
+        runner_status=failed
+    fi
+    printf 'stage,status,runner_exit,rmcdhf_exit\n%s,%s,%s,%s\n' \
+        "$runner_stage" "$runner_status" "$runner_exit" "$rmcdhf_exit" \
+        > "$output_dir/status.csv"
+    if (( stage_transaction )) && [[ ${GRASP_PREPARE_ONLY:-0} != 1 ]] \
+        && [[ ! -f $stage_root/next_restart.json ]]; then
+        set +e
+        "$graspkit_python" "$stage_guard" \
+            validate-stage "$stage_root" --config "$stage_config" \
+            > "$stage_root/validation.stdout" 2> "$stage_root/validation.stderr"
+        validation_exit=$?
+        set -e
+        if (( runner_exit == 0 && validation_exit != 0 )); then
+            runner_exit=$validation_exit
+        fi
+    fi
+    trap - EXIT
+    exit "$runner_exit"
+}
+trap record_runner_status EXIT
 
 if [[ -z $isodata_source ]]; then
     isodata_source=$source_dir/isodata
@@ -287,10 +365,37 @@ if [[ $(head -n 1 "$isodata_source") != 'Atomic number:' ]]; then
 fi
 cp "$isodata_source" "$output_dir/isodata"
 cp "$source_dir/$rcsf_name" "$output_dir/rcsf.inp"
-previous_wave=${GRASP_PREVIOUS_WAVE:-$source_dir/$wave_name}
-if [[ ! -f $previous_wave ]]; then
-    echo "previous wavefunction does not exist: $previous_wave" >&2
-    exit 2
+allow_unbalanced=0
+case ${GRASP_ALLOW_UNBALANCED:-0} in
+    1|true|TRUE|yes|YES|on|ON) allow_unbalanced=1 ;;
+esac
+selection_args=(
+    --varied "$varied"
+    --rcsf "$output_dir/rcsf.inp"
+    --manifest "$output_dir/selection_manifest.json"
+    --case "$case_name"
+    --stage "AS$stage"
+)
+if (( allow_unbalanced )); then
+    selection_args+=(--allow-unbalanced)
+    export GRASP_REQUIRE_BALANCED_PAIR=0
+    export GRASP_ALLOW_UNBALANCED=1
+else
+    # The production runner always enables the executable's independent
+    # check.  Historical direct executable use keeps its default-off path.
+    export GRASP_REQUIRE_BALANCED_PAIR=1
+    unset GRASP_ALLOW_UNBALANCED
+fi
+runner_stage=input_gate
+set +e
+"$graspkit_python" "$stage_guard" selection \
+    "${selection_args[@]}"
+selection_status=$?
+set -e
+if (( selection_status != 0 )); then
+    runner_status=rejected_input
+    echo "production input gate rejected the varied list; set GRASP_ALLOW_UNBALANCED=1 only for an explicit diagnostic run" >&2
+    exit "$selection_status"
 fi
 cp "$previous_wave" "$output_dir/previous.w"
 cp "$source_dir/$archived_sum" "$output_dir/archived.sum"
@@ -322,10 +427,12 @@ else
 fi
 # Prepare the exact inputs without launching MPI for a submission preflight.
 if [[ ${GRASP_PREPARE_ONLY:-0} == 1 ]]; then
+    runner_stage=prepared
     echo "prepared: $case_name $mode AS$stage -> $output_dir"
     exit 0
 fi
 
+runner_stage=runtime_setup
 source /usr/share/Modules/init/bash
 module load mpi/openmpi-x86_64
 module load "${GRASP_MODULE:-grasp/grasp_2990_NNNP}"
@@ -343,6 +450,10 @@ for executable in rsave jj2lsj rlevels; do
         exit 2
     fi
 done
+if (( stage_transaction )) && ! command -v rci >/dev/null 2>&1; then
+    echo "missing module-provided executable: rci" >&2
+    exit 2
+fi
 rhfs_launcher=()
 if command -v rhfs_mpi >/dev/null 2>&1; then
     rhfs_launcher=(mpirun -n "$nprocs" rhfs_mpi)
@@ -371,10 +482,6 @@ if [[ -n ${SLURM_JOB_ID:-} ]]; then
 else
     grasp_mpi_launcher=(mpirun -n "$nprocs")
 fi
-if [[ $mode == balanced ]]; then
-    export GRASP_REQUIRE_BALANCED_PAIR=1
-fi
-
 cd "$output_dir"
 mkdisks "$nprocs" "$mpi_tmp"
 expected_disk="'$output_dir'"
@@ -397,8 +504,47 @@ if [[ $initial_wave == estimate ]]; then
     rwfnestimate \
         < rwfnestimate.stdin > rwfnestimate.stdout 2>&1
 fi
+if (( stage_transaction )); then
+    run_stage_fixed_rci() {
+        local fixed_work=$1 fixed_wave=$2
+        local fixed_mpi_tmp=$fixed_work/mpi_tmp
+        mkdir -p "$fixed_work"
+        mkdir -p "$fixed_mpi_tmp"
+        cp "$output_dir/isodata" "$fixed_work/isodata"
+        cp "$output_dir/rcsf.inp" "$fixed_work/baseline.c"
+        cp "$fixed_wave" "$fixed_work/baseline.w"
+        (
+            cd "$fixed_work"
+            # RCI creates its own MCP data.  Never reuse RMCDHF's MPI_TMP:
+            # doing so overwrites the 46-rank rangular_mpi MCP files.
+            mkdisks 1 "$fixed_mpi_tmp" > mkdisks.stdout 2>&1
+            rci < "$stage_rci_stdin" > rci.stdout 2>&1
+            test -s baseline.cm -a -s baseline.csum
+            printf '%s\ny\ny\ny\n' baseline | jj2lsj \
+                > jj2lsj.stdout 2>&1
+            rlevels baseline.cm > baseline.level
+            "$graspkit_python" \
+                "$graspkit_tools/pyscript/read_level_to_csv.py" \
+                -f baseline.level -lsj -o baseline_rci.csv
+            test -s baseline_rci.csv
+        )
+    }
+    runner_stage=fixed_rci_baseline
+    stage_baseline_dir=$stage_root/baseline_build
+    run_stage_fixed_rci "$stage_baseline_dir" "$output_dir/rwfn.inp"
+    stage_baseline_levels=$stage_baseline_dir/baseline_rci.csv
+    anchor_fields=$("$graspkit_python" \
+        "$stage_guard" finalize-anchor \
+        "$stage_root" --tf-wave "$output_dir/rwfn.inp" \
+        --selection-manifest "$output_dir/selection_manifest.json" \
+        --baseline-levels "$stage_baseline_levels")
+    IFS=$'\t' read -r GRASP_ANCHOR_ID GRASP_ANCHOR_TYPE GRASP_ANCHOR_HASH \
+        <<< "$anchor_fields"
+    export GRASP_ANCHOR_ID GRASP_ANCHOR_TYPE GRASP_ANCHOR_HASH
+fi
 
 set +e
+runner_stage=rmcdhf
 rmcdhf_timeout=${GRASP_RMCDHF_TIMEOUT:-}
 rmcdhf_kill_after=${GRASP_RMCDHF_KILL_AFTER:-30s}
 if [[ -n $rmcdhf_timeout ]]; then
@@ -449,7 +595,13 @@ if [[ -s $output_dir/orbopt_trace.csv ]]; then
     }
 fi
 if [[ $rmcdhf_status -ne 0 ]]; then
+    if [[ $rmcdhf_status -eq 124 ]]; then
+        runner_status=rejected_timeout
+    else
+        runner_status=rejected_rmcdhf
+    fi
     if [[ ${GRASP_EXPECT_RMCDHF_FAILURE:-0} == 1 ]]; then
+        runner_stage=expected_rmcdhf_failure
         echo "completed expected failure: $case_name $mode AS$stage ($nprocs ranks)"
         echo "results: $output_dir"
         exit 0
@@ -463,6 +615,7 @@ fi
 # rhfs_mpi writes the hyperfine/LSJ companion, and rlevels emits the readable
 # level table consumed by graspkit-tools.
 result_name=${prefix}as${stage}
+runner_stage=postprocess
 rsave "$result_name" > rsave.stdout 2>&1
 if [[ ! -f rmcdhf.sum && -f "$result_name.sum" ]]; then
     cp "$result_name.sum" rmcdhf.sum
@@ -498,8 +651,15 @@ convergence_status=$?
 set -e
 printf '%s\n' "$convergence_status" > "$output_dir/convergence_check.exitcode"
 if (( convergence_status != 0 )); then
+    runner_stage=convergence
+    runner_status=rejected_convergence
     echo "${convergence_mode} SCF convergence check failed; rmcdhf itself completed" >&2
     exit "$convergence_status"
+fi
+if (( stage_transaction )); then
+    runner_stage=fixed_rci_candidate
+    run_stage_fixed_rci "$output_dir/fixed_rci" \
+        "$output_dir/$result_name.w"
 fi
 if [[ ${GRASP_TRACE_RWFN:-0} == 1 && -n $varied ]]; then
     python3 "$repo_root/test/rmcdhf_orbopt/compare_rwfn.py" \
@@ -524,5 +684,6 @@ python3 "$repo_root/test/rmcdhf_orbopt/compare_sum.py" \
     "${comparison_args[@]}" \
     > "$output_dir/archive_comparison.csv"
 
+runner_stage=candidate_complete
 echo "completed: $case_name $mode AS$stage ($nprocs ranks, $initial_wave wave)"
 echo "results: $output_dir"

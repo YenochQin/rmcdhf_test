@@ -47,7 +47,12 @@ fi
 run_case() {
     local family=$1 mode=$2 stage=$3 ranks=$4 tag=$5
     shift 5
-    env "$@" bash "$runner" "$family" "$mode" \
+    local -a diagnostic_mode=()
+    if [[ $mode == optimized || $mode == minus_only ]]; then
+        # B1/B2 are intentionally unbalanced diagnostic experiments.
+        diagnostic_mode+=(GRASP_ALLOW_UNBALANCED=1)
+    fi
+    env "${diagnostic_mode[@]}" "$@" bash "$runner" "$family" "$mode" \
         "$output_root/$tag" "$ranks" estimate "$stage"
 }
 
