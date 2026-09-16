@@ -1,0 +1,894 @@
+!***********************************************************************
+!  Atomic relativistic-partner orbital updates for rmcdhf_mpi.
+!
+!  Each candidate is generated after restoring the same complete orbital
+!  snapshot.  Only after every member has a valid raw candidate are the
+!  candidates damped with one shared coefficient, written together,
+!  orthogonalised, checked again, and committed.  Any failure restores the
+!  full snapshot, including orbitals indirectly changed by ORTHY.
+!***********************************************************************
+      MODULE ORBOPT_PAIR_TRANSACTION_C
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE,     &
+            IEEE_VALUE, IEEE_QUIET_NAN
+      USE vast_kind_param, ONLY: DOUBLE
+      USE parameter_def, ONLY: NNNP, NNNW
+      USE def_C, ONLY: ACCY, NSIC, DP, DQ
+      USE damp_C, ONLY: ODAMP
+      USE fixd_C, ONLY: LFIX
+      USE int_C, ONLY: P, Q, P0, Q0, MTP0, TF, TG, XU, XV
+      USE mpi_C
+      USE node_C, ONLY: NNODEP
+      USE orb_C, ONLY: E, GAMA, NH, NAK, NP, NW, PED
+      USE orba_C, ONLY: IORDER
+      USE orthct_C, ONLY: ORTHST
+      USE scf_C, ONLY: METHOD, SCNSTY, UCF, EPSMIN, EPSMAX, EMIN, EMAX, ZINF
+      USE tatb_C, ONLY: MTP, TA, TB
+      USE pote_C, ONLY: YP, XP, XQ
+      USE wave_C, ONLY: MF, PF, PZ, QF
+      USE coun_C, ONLY: COUNT_CONTEXT
+      USE ORBOPT_CONTROL_C, ONLY: ENABLE_ORBITAL_GUARD,             &
+            MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO, REJECT_NODE_CHANGE, &
+            NODE_PROGRESS_GUARD, MAX_PAIR_RETRIES, TRACE_ORBOPT,   &
+            PAIR_FAULT_GROUP, PAIR_FAULT_MEMBER, PAIR_FAULT_RETRY, &
+            PAIR_FAULT_ITERATION, PAIR_FAULT_PHASE, ORBOPT_ITERATION
+      USE ORBOPT_METRICS_C, ONLY: CHECK_ORBITAL_QUALITY
+      USE ORBOPT_PAIR_TYPES_C
+      USE ORBOPT_TRACE_C, ONLY: TRACE_PAIR_EVENT
+      USE improvmpi_I
+      USE dampor_I
+      USE orthy_I
+      USE rint_I
+      USE count_I
+      USE quad_I
+      IMPLICIT NONE
+
+      LOGICAL :: PAIR_TABLE_READY = .FALSE.
+      INTEGER :: PAIR_GROUP_COUNT = 0
+      INTEGER :: PAIR_GROUP_SIZE(NNNW) = 0
+      INTEGER :: PAIR_GROUP_MEMBER(2,NNNW) = 0
+      INTEGER :: ORBITAL_TO_PAIR_GROUP(NNNW) = 0
+      INTEGER :: PAIR_RETRY_COUNT(NNNW) = 0
+
+      REAL(DOUBLE), ALLOCATABLE :: PF_SNAPSHOT(:,:), QF_SNAPSHOT(:,:)
+      REAL(DOUBLE) :: E_SNAPSHOT(NNNW), GAMA_SNAPSHOT(NNNW)
+      REAL(DOUBLE) :: PED_SNAPSHOT(NNNW)
+      REAL(DOUBLE) :: PZ_SNAPSHOT(NNNW), SCNSTY_SNAPSHOT(NNNW)
+      REAL(DOUBLE) :: ODAMP_SNAPSHOT(NNNW)
+      INTEGER :: MF_SNAPSHOT(NNNW), METHOD_SNAPSHOT(NNNW)
+      INTEGER :: NSIC_SNAPSHOT, MTP0_SNAPSHOT, MTP_SNAPSHOT
+      REAL(DOUBLE) :: P0_SNAPSHOT, Q0_SNAPSHOT
+      REAL(DOUBLE) :: EPSMIN_SNAPSHOT, EPSMAX_SNAPSHOT
+      REAL(DOUBLE) :: EMIN_SNAPSHOT, EMAX_SNAPSHOT, ZINF_SNAPSHOT
+      REAL(DOUBLE) :: P_WORK_SNAPSHOT(NNNP), Q_WORK_SNAPSHOT(NNNP)
+      REAL(DOUBLE) :: TF_SNAPSHOT(NNNP), TG_SNAPSHOT(NNNP)
+      REAL(DOUBLE) :: XU_SNAPSHOT(NNNP), XV_SNAPSHOT(NNNP)
+      REAL(DOUBLE) :: TA_SNAPSHOT(SIZE(TA)), TB_SNAPSHOT(SIZE(TB))
+      REAL(DOUBLE) :: YP_SNAPSHOT(NNNP), XP_SNAPSHOT(NNNP)
+      REAL(DOUBLE) :: XQ_SNAPSHOT(NNNP)
+      REAL(DOUBLE) :: DP_SNAPSHOT(NNNP), DQ_SNAPSHOT(NNNP)
+      INTEGER :: PAIR_SNAPSHOT_SEQUENCE = 0
+      INTEGER :: PAIR_SCHEDULE_SEQUENCE = 0
+      INTEGER :: CURRENT_PAIR_SNAPSHOT_ID = 0
+      REAL(DOUBLE) :: CURRENT_PAIR_SNAPSHOT_HASH = 0.D0
+
+      CONTAINS
+
+      SUBROUTINE INITIALIZE_PAIR_TRANSACTION
+      INTEGER :: STATUS, INTEGER_BUFFER(1 + NNNW + 2*NNNW + NNNW)
+      INTEGER :: OFFSET
+      CHARACTER(LEN=128) :: DETAIL
+
+      STATUS = PAIR_GROUP_OK
+      DETAIL = ''
+
+      IF (myid == 0) THEN
+         CALL BUILD_ORBITAL_GROUP_TABLE(NW, NP(:NW), NAK(:NW),     &
+              LFIX(:NW), IORDER(:NW), PAIR_GROUP_COUNT,           &
+              PAIR_GROUP_SIZE(:NW), PAIR_GROUP_MEMBER(:,:NW),     &
+              ORBITAL_TO_PAIR_GROUP(:NW), STATUS, DETAIL)
+      ENDIF
+      CALL MPI_Bcast(STATUS, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(DETAIL, LEN(DETAIL), MPI_CHARACTER, 0,        &
+                     MPI_COMM_WORLD, ierr)
+      IF (STATUS /= PAIR_GROUP_OK) THEN
+         IF (myid == 0) WRITE (*,'(A,A)')                          &
+            'ORBOPT pair-table construction failed: ', TRIM(DETAIL)
+         ERROR STOP 'ORBOPT pair-table construction failed'
+      ENDIF
+
+!     Broadcast one packed integer table so every rank uses the unique rank-0
+!     scheduling decision.  The local rebuild is intentionally not trusted.
+      IF (myid == 0) THEN
+         INTEGER_BUFFER = 0
+         INTEGER_BUFFER(1) = PAIR_GROUP_COUNT
+         OFFSET = 1
+         INTEGER_BUFFER(OFFSET+1:OFFSET+NNNW) = PAIR_GROUP_SIZE
+         OFFSET = OFFSET + NNNW
+         INTEGER_BUFFER(OFFSET+1:OFFSET+2*NNNW) =                  &
+              RESHAPE(PAIR_GROUP_MEMBER, [2*NNNW])
+         OFFSET = OFFSET + 2*NNNW
+         INTEGER_BUFFER(OFFSET+1:OFFSET+NNNW) = ORBITAL_TO_PAIR_GROUP
+      ENDIF
+      CALL MPI_Bcast(INTEGER_BUFFER, SIZE(INTEGER_BUFFER),         &
+                     MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+      PAIR_GROUP_COUNT = INTEGER_BUFFER(1)
+      OFFSET = 1
+      PAIR_GROUP_SIZE = INTEGER_BUFFER(OFFSET+1:OFFSET+NNNW)
+      OFFSET = OFFSET + NNNW
+      PAIR_GROUP_MEMBER = RESHAPE(                                &
+           INTEGER_BUFFER(OFFSET+1:OFFSET+2*NNNW), [2,NNNW])
+      OFFSET = OFFSET + 2*NNNW
+      ORBITAL_TO_PAIR_GROUP = INTEGER_BUFFER(OFFSET+1:OFFSET+NNNW)
+      PAIR_RETRY_COUNT = 0
+      PAIR_TABLE_READY = .TRUE.
+
+      IF (myid == 0) THEN
+         WRITE (*,'(A,I0)') 'ORBOPT pair groups constructed: ',   &
+                             PAIR_GROUP_COUNT
+      ENDIF
+      DO STATUS = 1, PAIR_GROUP_COUNT
+         CALL TRACE_PAIR_GROUP_DEFINITION(STATUS)
+      END DO
+      END SUBROUTINE INITIALIZE_PAIR_TRANSACTION
+
+      SUBROUTINE RELEASE_PAIR_TRANSACTION
+      IF (ALLOCATED(PF_SNAPSHOT)) DEALLOCATE(PF_SNAPSHOT)
+      IF (ALLOCATED(QF_SNAPSHOT)) DEALLOCATE(QF_SNAPSHOT)
+      PAIR_TABLE_READY = .FALSE.
+      PAIR_GROUP_COUNT = 0
+      PAIR_GROUP_SIZE = 0
+      PAIR_GROUP_MEMBER = 0
+      ORBITAL_TO_PAIR_GROUP = 0
+      PAIR_RETRY_COUNT = 0
+      PAIR_SNAPSHOT_SEQUENCE = 0
+      PAIR_SCHEDULE_SEQUENCE = 0
+      CURRENT_PAIR_SNAPSHOT_ID = 0
+      CURRENT_PAIR_SNAPSHOT_HASH = 0.D0
+      END SUBROUTINE RELEASE_PAIR_TRANSACTION
+
+      INTEGER FUNCTION GROUP_FOR_ORBITAL(J)
+      INTEGER, INTENT(IN) :: J
+      IF (.NOT.PAIR_TABLE_READY .OR. J < 1 .OR. J > NW) THEN
+         GROUP_FOR_ORBITAL = 0
+      ELSE
+         GROUP_FOR_ORBITAL = ORBITAL_TO_PAIR_GROUP(J)
+      ENDIF
+      END FUNCTION GROUP_FOR_ORBITAL
+
+      SUBROUTINE SAVE_PAIR_SNAPSHOT
+      INTEGER :: IOS
+      IF (.NOT.ALLOCATED(PF_SNAPSHOT)) THEN
+         ALLOCATE(PF_SNAPSHOT(NNNP,NW), QF_SNAPSHOT(NNNP,NW), STAT=IOS)
+         IF (IOS /= 0) ERROR STOP 'ORBOPT pair snapshot allocation failed'
+      ENDIF
+      PF_SNAPSHOT = PF(:,:NW)
+      QF_SNAPSHOT = QF(:,:NW)
+      E_SNAPSHOT = E
+      GAMA_SNAPSHOT = GAMA
+      PED_SNAPSHOT = PED
+      PZ_SNAPSHOT = PZ
+      SCNSTY_SNAPSHOT = SCNSTY
+      ODAMP_SNAPSHOT = ODAMP
+      MF_SNAPSHOT = MF
+      METHOD_SNAPSHOT = METHOD
+      NSIC_SNAPSHOT = NSIC
+      MTP0_SNAPSHOT = MTP0
+      MTP_SNAPSHOT = MTP
+      P0_SNAPSHOT = P0
+      Q0_SNAPSHOT = Q0
+      P_WORK_SNAPSHOT = P
+      Q_WORK_SNAPSHOT = Q
+      TF_SNAPSHOT = TF
+      TG_SNAPSHOT = TG
+      XU_SNAPSHOT = XU
+      XV_SNAPSHOT = XV
+      TA_SNAPSHOT = TA
+      TB_SNAPSHOT = TB
+      YP_SNAPSHOT = YP
+      XP_SNAPSHOT = XP
+      XQ_SNAPSHOT = XQ
+      DP_SNAPSHOT = DP
+      DQ_SNAPSHOT = DQ
+      EPSMIN_SNAPSHOT = EPSMIN
+      EPSMAX_SNAPSHOT = EPSMAX
+      EMIN_SNAPSHOT = EMIN
+      EMAX_SNAPSHOT = EMAX
+      ZINF_SNAPSHOT = ZINF
+      PAIR_SNAPSHOT_SEQUENCE = PAIR_SNAPSHOT_SEQUENCE + 1
+      CURRENT_PAIR_SNAPSHOT_ID = PAIR_SNAPSHOT_SEQUENCE
+      CURRENT_PAIR_SNAPSHOT_HASH = PAIR_STATE_HASH(PF_SNAPSHOT,   &
+                                                   QF_SNAPSHOT)
+      END SUBROUTINE SAVE_PAIR_SNAPSHOT
+
+      REAL(DOUBLE) FUNCTION PAIR_STATE_HASH(PF_STATE, QF_STATE)
+      REAL(DOUBLE), INTENT(IN) :: PF_STATE(:,:), QF_STATE(:,:)
+      INTEGER :: I, J
+      PAIR_STATE_HASH = 0.D0
+      DO J = 1, NW
+         PAIR_STATE_HASH = PAIR_STATE_HASH + DBLE(17*J)*E_SNAPSHOT(J)
+         DO I = 1, MF_SNAPSHOT(J)
+            PAIR_STATE_HASH = PAIR_STATE_HASH +                  &
+                 DBLE(MOD(I + 31*J, 104729))*PF_STATE(I,J) +     &
+                 DBLE(MOD(3*I + 37*J, 104723))*QF_STATE(I,J)
+         END DO
+      END DO
+      END FUNCTION PAIR_STATE_HASH
+
+      SUBROUTINE PAIR_MEMBER_LABELS(GROUP_ID, LABELS)
+      INTEGER, INTENT(IN) :: GROUP_ID
+      CHARACTER(LEN=*), INTENT(OUT) :: LABELS
+      CHARACTER(LEN=16) :: LABEL
+      INTEGER :: POSITION, J
+      LABELS = ''
+      DO POSITION = 1, PAIR_GROUP_SIZE(GROUP_ID)
+         J = PAIR_GROUP_MEMBER(POSITION,GROUP_ID)
+         WRITE (LABEL,'(I0,A)') NP(J), TRIM(NH(J))
+         IF (POSITION > 1) LABELS = TRIM(LABELS)//'/'
+         LABELS = TRIM(LABELS)//TRIM(LABEL)
+      END DO
+      END SUBROUTINE PAIR_MEMBER_LABELS
+
+      SUBROUTINE TRACE_PAIR_GROUP_DEFINITION(GROUP_ID)
+      INTEGER, INTENT(IN) :: GROUP_ID
+      CHARACTER(LEN=64) :: LABELS
+      INTEGER :: POSITION, J
+      CALL PAIR_MEMBER_LABELS(GROUP_ID, LABELS)
+      DO POSITION = 1, PAIR_GROUP_SIZE(GROUP_ID)
+         J = PAIR_GROUP_MEMBER(POSITION,GROUP_ID)
+         CALL TRACE_PAIR_EVENT('pair_group', GROUP_ID,             &
+              PAIR_GROUP_SIZE(GROUP_ID), POSITION, J, 0, 0.D0,   &
+              0.D0, 0, 'table', 'defined', 0.D0, 0.D0, 0.D0,    &
+              0.D0, 0.D0, 0, 0, MF(J), 0, E(J), E(J),           &
+              .FALSE., .FALSE., LABELS, 'deterministic_rank0_table', 0)
+      END DO
+      END SUBROUTINE TRACE_PAIR_GROUP_DEFINITION
+
+      SUBROUTINE TRACE_CANDIDATE(GROUP_ID, POSITION, CANDIDATE,   &
+            SHARED_DAMPING, PHASE, DECISION, DETAIL)
+      INTEGER, INTENT(IN) :: GROUP_ID, POSITION
+      TYPE(ORBITAL_CANDIDATE_T), INTENT(IN) :: CANDIDATE
+      REAL(DOUBLE), INTENT(IN) :: SHARED_DAMPING
+      CHARACTER(LEN=*), INTENT(IN) :: PHASE, DECISION, DETAIL
+      CHARACTER(LEN=64) :: LABELS
+      INTEGER :: J
+      J = CANDIDATE%J
+      CALL PAIR_MEMBER_LABELS(GROUP_ID, LABELS)
+      CALL TRACE_PAIR_EVENT('pair_member', GROUP_ID,              &
+           PAIR_GROUP_SIZE(GROUP_ID), POSITION, J,                &
+           CURRENT_PAIR_SNAPSHOT_ID, CURRENT_PAIR_SNAPSHOT_HASH,  &
+           SHARED_DAMPING, PAIR_RETRY_COUNT(GROUP_ID), PHASE,     &
+           DECISION, CANDIDATE%OVERLAP, CANDIDATE%NORM,           &
+           CANDIDATE%OLD_NORM, CANDIDATE%RADIUS_OLD,              &
+           CANDIDATE%RADIUS_CANDIDATE, CANDIDATE%NODES_OLD,      &
+           CANDIDATE%NODES_CANDIDATE, MF_SNAPSHOT(J),             &
+           CANDIDATE%MTP, E_SNAPSHOT(J), CANDIDATE%ENERGY,       &
+           CANDIDATE%FALLBACK_REQUESTED,                          &
+           CANDIDATE%PREPARE_FAILED, LABELS, DETAIL,               &
+           PAIR_SCHEDULE_SEQUENCE)
+      END SUBROUTINE TRACE_CANDIDATE
+
+      SUBROUTINE TRACE_STORED_CANDIDATE(GROUP_ID, POSITION,       &
+            CANDIDATE, SHARED_DAMPING, PHASE, DECISION, DETAIL)
+      INTEGER, INTENT(IN) :: GROUP_ID, POSITION
+      TYPE(ORBITAL_CANDIDATE_T), INTENT(IN) :: CANDIDATE
+      REAL(DOUBLE), INTENT(IN) :: SHARED_DAMPING
+      CHARACTER(LEN=*), INTENT(IN) :: PHASE, DECISION, DETAIL
+      TYPE(ORBITAL_CANDIDATE_T) :: STORED
+
+      STORED = CANDIDATE
+      CALL STORED_ORBITAL_METRICS(CANDIDATE%J, STORED%NORM,       &
+           STORED%OLD_NORM, STORED%OVERLAP, STORED%RADIUS_OLD,    &
+           STORED%RADIUS_CANDIDATE, STORED%NODES_OLD,             &
+           STORED%NODES_CANDIDATE)
+      STORED%MTP = MF(CANDIDATE%J)
+      STORED%ENERGY = E(CANDIDATE%J)
+      CALL TRACE_CANDIDATE(GROUP_ID, POSITION, STORED,            &
+           SHARED_DAMPING, PHASE, DECISION, DETAIL)
+      END SUBROUTINE TRACE_STORED_CANDIDATE
+
+      SUBROUTINE TRACE_GROUP_DECISION(GROUP_ID, SHARED_DAMPING,   &
+            PHASE, DECISION, DETAIL)
+      INTEGER, INTENT(IN) :: GROUP_ID
+      REAL(DOUBLE), INTENT(IN) :: SHARED_DAMPING
+      CHARACTER(LEN=*), INTENT(IN) :: PHASE, DECISION, DETAIL
+      CHARACTER(LEN=64) :: LABELS
+      INTEGER :: J
+      CALL PAIR_MEMBER_LABELS(GROUP_ID, LABELS)
+      J = PAIR_GROUP_MEMBER(1,GROUP_ID)
+      CALL TRACE_PAIR_EVENT('pair_decision', GROUP_ID,            &
+           PAIR_GROUP_SIZE(GROUP_ID), 0, J, CURRENT_PAIR_SNAPSHOT_ID, &
+           CURRENT_PAIR_SNAPSHOT_HASH, SHARED_DAMPING,            &
+           PAIR_RETRY_COUNT(GROUP_ID), PHASE, DECISION, 0.D0,    &
+           0.D0, 0.D0, 0.D0, 0.D0, 0, 0, MF_SNAPSHOT(J), 0,     &
+           E_SNAPSHOT(J), E(J), .FALSE., DECISION == 'rollback', &
+           LABELS, DETAIL, PAIR_SCHEDULE_SEQUENCE)
+      END SUBROUTINE TRACE_GROUP_DECISION
+
+      SUBROUTINE RESTORE_PAIR_SNAPSHOT
+      PF(:,:NW) = PF_SNAPSHOT
+      QF(:,:NW) = QF_SNAPSHOT
+      E = E_SNAPSHOT
+      GAMA = GAMA_SNAPSHOT
+      PED = PED_SNAPSHOT
+      PZ = PZ_SNAPSHOT
+      SCNSTY = SCNSTY_SNAPSHOT
+      ODAMP = ODAMP_SNAPSHOT
+      MF = MF_SNAPSHOT
+      METHOD = METHOD_SNAPSHOT
+      NSIC = NSIC_SNAPSHOT
+      MTP0 = MTP0_SNAPSHOT
+      MTP = MTP_SNAPSHOT
+      P0 = P0_SNAPSHOT
+      Q0 = Q0_SNAPSHOT
+      P = P_WORK_SNAPSHOT
+      Q = Q_WORK_SNAPSHOT
+      TF = TF_SNAPSHOT
+      TG = TG_SNAPSHOT
+      XU = XU_SNAPSHOT
+      XV = XV_SNAPSHOT
+      TA = TA_SNAPSHOT
+      TB = TB_SNAPSHOT
+      YP = YP_SNAPSHOT
+      XP = XP_SNAPSHOT
+      XQ = XQ_SNAPSHOT
+      DP = DP_SNAPSHOT
+      DQ = DQ_SNAPSHOT
+      EPSMIN = EPSMIN_SNAPSHOT
+      EPSMAX = EPSMAX_SNAPSHOT
+      EMIN = EMIN_SNAPSHOT
+      EMAX = EMAX_SNAPSHOT
+      ZINF = ZINF_SNAPSHOT
+      END SUBROUTINE RESTORE_PAIR_SNAPSHOT
+
+      SUBROUTINE PREPARE_PAIR_CANDIDATE(EOL, J, LSORT, CANDIDATE)
+      LOGICAL, INTENT(IN) :: EOL, LSORT
+      INTEGER, INTENT(IN) :: J
+      TYPE(ORBITAL_CANDIDATE_T), INTENT(INOUT) :: CANDIDATE
+      REAL(DOUBLE) :: UNUSED_DAMPMX
+      LOGICAL :: FAILED, FALLBACK
+      INTEGER :: IOS
+
+      CANDIDATE = ORBITAL_CANDIDATE_T()
+      CALL RESTORE_PAIR_SNAPSHOT
+      UNUSED_DAMPMX = 0.D0
+      FAILED = .FALSE.
+      FALLBACK = .FALSE.
+      CALL IMPROVmpi(EOL, J, LSORT, UNUSED_DAMPMX, .TRUE., FAILED, &
+                     FALLBACK, CANDIDATE%INV, CANDIDATE%JP,       &
+                     CANDIDATE%NNP)
+
+      CANDIDATE%J = J
+      CANDIDATE%SOLVE_FAILED = FAILED
+      CANDIDATE%FALLBACK_REQUESTED = FALLBACK
+      CANDIDATE%PREPARE_FAILED = FAILED .OR. FALLBACK
+      IF (CANDIDATE%PREPARE_FAILED) THEN
+         IF (FAILED) CANDIDATE%DETAIL = 'solve_failed'
+         IF (FALLBACK) CANDIDATE%DETAIL = 'method_fallback_required'
+         RETURN
+      ENDIF
+
+      CANDIDATE%MTP = MTP0
+      CANDIDATE%METHOD = METHOD(J)
+      CANDIDATE%NSIC = NSIC
+      CANDIDATE%ENERGY = E(J)
+      CANDIDATE%P0 = P0
+      CANDIDATE%SCNSTY = SCNSTY(J)
+      CANDIDATE%PED_PROPOSED = 0.D0
+      CANDIDATE%DAMPING_SUGGESTED = SUGGEST_ORBITAL_DAMPING(       &
+           ODAMP_SNAPSHOT(J), PED_SNAPSHOT(J), E_SNAPSHOT(J),     &
+           CANDIDATE%ENERGY, CANDIDATE%SCNSTY, ACCY,              &
+           CANDIDATE%PED_PROPOSED)
+      IF (ALLOCATED(CANDIDATE%P)) DEALLOCATE(CANDIDATE%P)
+      IF (ALLOCATED(CANDIDATE%Q)) DEALLOCATE(CANDIDATE%Q)
+      ALLOCATE(CANDIDATE%P(NNNP), CANDIDATE%Q(NNNP), STAT=IOS)
+      IF (IOS /= 0) ERROR STOP 'ORBOPT candidate allocation failed'
+      CANDIDATE%P = 0.D0
+      CANDIDATE%Q = 0.D0
+      CANDIDATE%P(:MTP0) = P(:MTP0)
+      CANDIDATE%Q(:MTP0) = Q(:MTP0)
+
+      CALL CANDIDATE_METRICS(J, CANDIDATE%P, CANDIDATE%Q,        &
+           CANDIDATE%MTP, CANDIDATE%NORM, CANDIDATE%OLD_NORM,    &
+           CANDIDATE%OVERLAP, CANDIDATE%RADIUS_OLD,               &
+           CANDIDATE%RADIUS_CANDIDATE, CANDIDATE%NODES_OLD,      &
+           CANDIDATE%NODES_CANDIDATE)
+      CANDIDATE%DNORM = CANDIDATE%NORM
+      CALL CHECK_CANDIDATE_NUMERICS(CANDIDATE)
+      END SUBROUTINE PREPARE_PAIR_CANDIDATE
+
+      SUBROUTINE CHECK_CANDIDATE_NUMERICS(CANDIDATE)
+      TYPE(ORBITAL_CANDIDATE_T), INTENT(INOUT) :: CANDIDATE
+      LOGICAL :: BAD
+      CHARACTER(LEN=128) :: DETAIL
+      INTEGER :: J
+
+      J = CANDIDATE%J
+      BAD = .FALSE.
+      DETAIL = ''
+      IF (CANDIDATE%MTP < 2 .OR. CANDIDATE%MTP > NNNP) THEN
+         BAD = .TRUE.
+         DETAIL = 'invalid_mtp'
+      ELSE IF (.NOT.IEEE_IS_FINITE(CANDIDATE%ENERGY) .OR.          &
+               .NOT.IEEE_IS_FINITE(CANDIDATE%P0) .OR.             &
+               .NOT.IEEE_IS_FINITE(CANDIDATE%SCNSTY) .OR.         &
+               .NOT.IEEE_IS_FINITE(CANDIDATE%NORM) .OR.           &
+               .NOT.IEEE_IS_FINITE(CANDIDATE%OVERLAP) .OR.        &
+               .NOT.IEEE_IS_FINITE(CANDIDATE%RADIUS_CANDIDATE) .OR. &
+               .NOT.ALL(IEEE_IS_FINITE(CANDIDATE%P(:CANDIDATE%MTP))) .OR. &
+               .NOT.ALL(IEEE_IS_FINITE(CANDIDATE%Q(:CANDIDATE%MTP)))) THEN
+         BAD = .TRUE.
+         DETAIL = 'non_finite'
+      ELSE IF (ABS(CANDIDATE%NORM - 1.D0) > 1.D-6) THEN
+         BAD = .TRUE.
+         DETAIL = 'normalization'
+      ENDIF
+      IF (.NOT.BAD .AND. ENABLE_ORBITAL_GUARD) THEN
+         CALL CHECK_ORBITAL_QUALITY(CANDIDATE%OVERLAP,             &
+              CANDIDATE%RADIUS_OLD, CANDIDATE%RADIUS_CANDIDATE,   &
+              CANDIDATE%NODES_OLD, CANDIDATE%NODES_CANDIDATE,     &
+              NNODEP(J), MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO,   &
+              REJECT_NODE_CHANGE, NODE_PROGRESS_GUARD, BAD, DETAIL)
+      ENDIF
+      IF (BAD) THEN
+         CANDIDATE%PREPARE_FAILED = .TRUE.
+         CANDIDATE%DETAIL = DETAIL
+      ENDIF
+      END SUBROUTINE CHECK_CANDIDATE_NUMERICS
+
+      SUBROUTINE CANDIDATE_METRICS(J, CANDIDATE_P, CANDIDATE_Q,   &
+            CANDIDATE_MTP, CANDIDATE_NORM, OLD_NORM, OVERLAP,     &
+            RADIUS_OLD, RADIUS_CANDIDATE, NODES_OLD,              &
+            NODES_CANDIDATE)
+      USE grid_C, ONLY: R, RP
+      USE tatb_C, ONLY: TA
+      INTEGER, INTENT(IN) :: J, CANDIDATE_MTP
+      REAL(DOUBLE), INTENT(IN) :: CANDIDATE_P(:), CANDIDATE_Q(:)
+      REAL(DOUBLE), INTENT(OUT) :: CANDIDATE_NORM, OLD_NORM, OVERLAP
+      REAL(DOUBLE), INTENT(OUT) :: RADIUS_OLD, RADIUS_CANDIDATE
+      INTEGER, INTENT(OUT) :: NODES_OLD, NODES_CANDIDATE
+      REAL(DOUBLE) :: SIGN_VALUE
+      INTEGER :: LIMIT
+
+      MTP = CANDIDATE_MTP
+      TA(1) = 0.D0
+      TA(2:MTP) = (CANDIDATE_P(2:MTP)**2 +                       &
+                    CANDIDATE_Q(2:MTP)**2)*RP(2:MTP)
+      CALL QUAD(CANDIDATE_NORM)
+      TA(1) = 0.D0
+      TA(2:MTP) = R(2:MTP)*(CANDIDATE_P(2:MTP)**2 +              &
+                    CANDIDATE_Q(2:MTP)**2)*RP(2:MTP)
+      CALL QUAD(RADIUS_CANDIDATE)
+
+      MTP = MF(J)
+      TA(1) = 0.D0
+      TA(2:MTP) = (PF(2:MTP,J)**2 + QF(2:MTP,J)**2)*RP(2:MTP)
+      CALL QUAD(OLD_NORM)
+      TA(1) = 0.D0
+      TA(2:MTP) = R(2:MTP)*(PF(2:MTP,J)**2 + QF(2:MTP,J)**2)     &
+                    *RP(2:MTP)
+      CALL QUAD(RADIUS_OLD)
+
+      LIMIT = MIN(CANDIDATE_MTP, MF(J))
+      MTP = LIMIT
+      TA(1) = 0.D0
+      TA(2:MTP) = (CANDIDATE_P(2:MTP)*PF(2:MTP,J) +              &
+                    CANDIDATE_Q(2:MTP)*QF(2:MTP,J))*RP(2:MTP)
+      CALL QUAD(OVERLAP)
+      COUNT_CONTEXT = J
+      CALL COUNT(CANDIDATE_P(:NNNP), CANDIDATE_MTP,               &
+                 NODES_CANDIDATE, SIGN_VALUE)
+      CALL COUNT(PF(:NNNP,J), MF(J), NODES_OLD, SIGN_VALUE)
+      END SUBROUTINE CANDIDATE_METRICS
+
+      SUBROUTINE APPLY_SHARED_DAMPING(CANDIDATE, SHARED_DAMPING)
+      TYPE(ORBITAL_CANDIDATE_T), INTENT(IN) :: CANDIDATE
+      REAL(DOUBLE), INTENT(IN) :: SHARED_DAMPING
+      INTEGER :: J, INV
+      REAL(DOUBLE) :: NORM
+
+      J = CANDIDATE%J
+!     Reuse the production DAMPOR operation so cutoff, sign inversion and
+!     PZ/MF handling are bit-for-bit the same as the legacy path.  The pair
+!     transaction owns the surrounding snapshot, so DAMPOR's P/Q swap is
+!     harmless and recoverable.
+      P = CANDIDATE%P
+      Q = CANDIDATE%Q
+      P0 = CANDIDATE%P0
+      MTP0 = CANDIDATE%MTP
+      INV = CANDIDATE%INV
+      CALL DAMPOR(J, INV, SHARED_DAMPING)
+      NORM = RINT(J,J,0)
+      IF (.NOT.IEEE_IS_FINITE(NORM) .OR. NORM <= 0.D0) THEN
+         PF(1,J) = IEEE_VALUE(PF(1,J), IEEE_QUIET_NAN)
+         RETURN
+      ENDIF
+      E(J) = CANDIDATE%ENERGY
+      PED(J) = CANDIDATE%PED_PROPOSED
+      SCNSTY(J) = CANDIDATE%SCNSTY
+      METHOD(J) = CANDIDATE%METHOD
+      END SUBROUTINE APPLY_SHARED_DAMPING
+
+      SUBROUTINE STORED_ORBITAL_METRICS(J, NORM, OLD_NORM,        &
+            OVERLAP, RADIUS_OLD, RADIUS_NEW, NODES_OLD, NODES_NEW)
+      USE grid_C, ONLY: R, RP
+      USE tatb_C, ONLY: TA
+      INTEGER, INTENT(IN) :: J
+      REAL(DOUBLE), INTENT(OUT) :: NORM, OLD_NORM, OVERLAP
+      REAL(DOUBLE), INTENT(OUT) :: RADIUS_OLD, RADIUS_NEW
+      INTEGER, INTENT(OUT) :: NODES_OLD, NODES_NEW
+      REAL(DOUBLE) :: SGN
+      INTEGER :: LIMIT
+
+      NORM = RINT(J,J,0)
+      MTP = MF_SNAPSHOT(J)
+      TA(1) = 0.D0
+      TA(2:MTP) = (PF_SNAPSHOT(2:MTP,J)**2 +                     &
+                    QF_SNAPSHOT(2:MTP,J)**2)*RP(2:MTP)
+      CALL QUAD(OLD_NORM)
+      LIMIT = MIN(MF(J), MF_SNAPSHOT(J))
+      MTP = LIMIT
+      TA(1) = 0.D0
+      TA(2:MTP) = (PF(2:MTP,J)*PF_SNAPSHOT(2:MTP,J) +            &
+                    QF(2:MTP,J)*QF_SNAPSHOT(2:MTP,J))*RP(2:MTP)
+      CALL QUAD(OVERLAP)
+      MTP = MF_SNAPSHOT(J)
+      TA(1) = 0.D0
+      TA(2:MTP) = R(2:MTP)*(PF_SNAPSHOT(2:MTP,J)**2 +            &
+                    QF_SNAPSHOT(2:MTP,J)**2)*RP(2:MTP)
+      CALL QUAD(RADIUS_OLD)
+      MTP = MF(J)
+      TA(1) = 0.D0
+      TA(2:MTP) = R(2:MTP)*(PF(2:MTP,J)**2 + QF(2:MTP,J)**2)     &
+                    *RP(2:MTP)
+      CALL QUAD(RADIUS_NEW)
+      COUNT_CONTEXT = J
+      CALL COUNT(PF_SNAPSHOT(:NNNP,J), MF_SNAPSHOT(J), NODES_OLD, SGN)
+      CALL COUNT(PF(:NNNP,J), MF(J), NODES_NEW, SGN)
+      END SUBROUTINE STORED_ORBITAL_METRICS
+
+      SUBROUTINE CHECK_STORED_ORBITAL(J, BAD, DETAIL)
+      INTEGER, INTENT(IN) :: J
+      LOGICAL, INTENT(OUT) :: BAD
+      CHARACTER(LEN=*), INTENT(OUT) :: DETAIL
+      REAL(DOUBLE) :: NORM, OLD_NORM, OVERLAP, RADIUS_OLD, RADIUS_NEW
+      REAL(DOUBLE) :: RADIUS_FACTOR
+      REAL(DOUBLE) :: SELF_CONSISTENCY, DELTA
+      INTEGER :: LIMIT, NODES_OLD, NODES_NEW, I
+
+      BAD = .FALSE.
+      DETAIL = ''
+      IF (MF(J) < 2 .OR. MF(J) > NNNP) THEN
+         BAD = .TRUE.
+         DETAIL = 'invalid_mf'
+         RETURN
+      ENDIF
+      IF (.NOT.ALL(IEEE_IS_FINITE(PF(:MF(J),J))) .OR.             &
+          .NOT.ALL(IEEE_IS_FINITE(QF(:MF(J),J))) .OR.             &
+          .NOT.IEEE_IS_FINITE(E(J)) .OR. .NOT.IEEE_IS_FINITE(PZ(J))) THEN
+         BAD = .TRUE.
+         DETAIL = 'non_finite'
+         RETURN
+      ENDIF
+      CALL STORED_ORBITAL_METRICS(J, NORM, OLD_NORM, OVERLAP,     &
+           RADIUS_OLD, RADIUS_NEW, NODES_OLD, NODES_NEW)
+      IF (.NOT.IEEE_IS_FINITE(NORM) .OR. ABS(NORM-1.D0) > 1.D-6) THEN
+         BAD = .TRUE.
+         DETAIL = 'normalization'
+         RETURN
+      ENDIF
+
+!     Use the actual committed (and possibly reorthogonalised) orbital for
+!     convergence, not the undamped raw-candidate residual.
+      SELF_CONSISTENCY = 0.D0
+      LIMIT = MIN(MF(J), MF_SNAPSHOT(J))
+      DO I = 1, LIMIT
+         DELTA = ABS(PF(I,J)-PF_SNAPSHOT(I,J)) +                  &
+                 ABS(QF(I,J)-QF_SNAPSHOT(I,J))
+         SELF_CONSISTENCY = MAX(SELF_CONSISTENCY, DELTA)
+      END DO
+      SCNSTY(J) = SELF_CONSISTENCY*SQRT(UCF(J))
+
+      IF (RADIUS_OLD <= 0.D0 .OR. RADIUS_NEW <= 0.D0) THEN
+         BAD = .TRUE.
+         DETAIL = 'non_positive_radius'
+      ELSE
+         RADIUS_FACTOR = MAX(RADIUS_OLD/RADIUS_NEW,                &
+                             RADIUS_NEW/RADIUS_OLD)
+         IF (.NOT.IEEE_IS_FINITE(OVERLAP) .OR.                     &
+             .NOT.IEEE_IS_FINITE(RADIUS_FACTOR)) THEN
+            BAD = .TRUE.
+            DETAIL = 'non_finite_metrics'
+         ENDIF
+      ENDIF
+      IF (.NOT.BAD) CALL CHECK_ORBITAL_QUALITY(OVERLAP, RADIUS_OLD, &
+           RADIUS_NEW, NODES_OLD, NODES_NEW, NNODEP(J),            &
+           MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO, REJECT_NODE_CHANGE, &
+           NODE_PROGRESS_GUARD, BAD, DETAIL)
+      END SUBROUTINE CHECK_STORED_ORBITAL
+
+      SUBROUTINE ASSERT_SNAPSHOT_RESTORED(GROUP_ID)
+      INTEGER, INTENT(IN) :: GROUP_ID
+      LOGICAL :: RESTORED
+      INTEGER :: J
+      RESTORED = .TRUE.
+      DO J = 1, NW
+         RESTORED = RESTORED .AND.                               &
+              ALL(PF(:MF_SNAPSHOT(J),J) ==                       &
+                  PF_SNAPSHOT(:MF_SNAPSHOT(J),J)) .AND.           &
+              ALL(QF(:MF_SNAPSHOT(J),J) ==                       &
+                  QF_SNAPSHOT(:MF_SNAPSHOT(J),J))
+      END DO
+      RESTORED = RESTORED .AND.                                  &
+                 ALL(E == E_SNAPSHOT) .AND.                       &
+                 ALL(GAMA == GAMA_SNAPSHOT) .AND.                 &
+                 ALL(PED == PED_SNAPSHOT) .AND.                   &
+                 ALL(PZ == PZ_SNAPSHOT) .AND.                     &
+                 ALL(SCNSTY == SCNSTY_SNAPSHOT) .AND.             &
+                 ALL(ODAMP == ODAMP_SNAPSHOT) .AND.               &
+                 ALL(MF == MF_SNAPSHOT) .AND.                     &
+                 ALL(METHOD == METHOD_SNAPSHOT) .AND.             &
+                 NSIC == NSIC_SNAPSHOT .AND. MTP0 == MTP0_SNAPSHOT .AND. &
+                 MTP == MTP_SNAPSHOT .AND. P0 == P0_SNAPSHOT .AND. &
+                 Q0 == Q0_SNAPSHOT .AND. ALL(P == P_WORK_SNAPSHOT) .AND. &
+                 ALL(Q == Q_WORK_SNAPSHOT) .AND. ALL(YP == YP_SNAPSHOT) .AND. &
+                 ALL(XP == XP_SNAPSHOT) .AND. ALL(XQ == XQ_SNAPSHOT) .AND. &
+                 ALL(DP == DP_SNAPSHOT) .AND. ALL(DQ == DQ_SNAPSHOT) .AND. &
+                 ALL(TF == TF_SNAPSHOT) .AND. ALL(TG == TG_SNAPSHOT) .AND. &
+                 ALL(XU == XU_SNAPSHOT) .AND. ALL(XV == XV_SNAPSHOT) .AND. &
+                 ALL(TA == TA_SNAPSHOT) .AND. ALL(TB == TB_SNAPSHOT)
+      IF (.NOT.RESTORED) THEN
+         IF (myid == 0) WRITE (*,'(A,I0)')                         &
+            'ORBOPT pair rollback did not restore snapshot; group=', GROUP_ID
+         ERROR STOP 'ORBOPT pair rollback restore failure'
+      ENDIF
+      END SUBROUTINE ASSERT_SNAPSHOT_RESTORED
+
+      LOGICAL FUNCTION ORBITAL_AFFECTED_BY_GROUP(J, GROUP_ID)
+      INTEGER, INTENT(IN) :: J, GROUP_ID
+      INTEGER :: POSITION, MEMBER
+      ORBITAL_AFFECTED_BY_GROUP = .FALSE.
+      DO POSITION = 1, PAIR_GROUP_SIZE(GROUP_ID)
+         MEMBER = PAIR_GROUP_MEMBER(POSITION,GROUP_ID)
+         IF (NAK(J) == NAK(MEMBER)) THEN
+            ORBITAL_AFFECTED_BY_GROUP = .TRUE.
+            RETURN
+         ENDIF
+      END DO
+      END FUNCTION ORBITAL_AFFECTED_BY_GROUP
+
+      SUBROUTINE CONSENSUS_BAD(LOCAL_BAD, GLOBAL_BAD, DETAIL)
+      LOGICAL, INTENT(IN) :: LOCAL_BAD
+      LOGICAL, INTENT(OUT) :: GLOBAL_BAD
+      CHARACTER(LEN=*), INTENT(INOUT) :: DETAIL
+      INTEGER :: LOCAL_RANK, FAILED_RANK
+!     Select the lowest failing rank, then broadcast its diagnostic so every
+!     rank records and acts on one identical group decision.
+      LOCAL_RANK = MERGE(myid, nprocs, LOCAL_BAD)
+      CALL MPI_Allreduce(LOCAL_RANK, FAILED_RANK, 1, MPI_INTEGER, &
+                         MPI_MIN, MPI_COMM_WORLD, ierr)
+      GLOBAL_BAD = FAILED_RANK < nprocs
+      IF (GLOBAL_BAD) THEN
+         CALL MPI_Bcast(DETAIL, LEN(DETAIL), MPI_CHARACTER,       &
+                        FAILED_RANK, MPI_COMM_WORLD, ierr)
+      ELSE
+         DETAIL = ''
+      ENDIF
+      END SUBROUTINE CONSENSUS_BAD
+
+      SUBROUTINE ASSERT_PAIR_STATE_CONSISTENCY(GROUP_ID)
+      INTEGER, INTENT(IN) :: GROUP_ID
+      REAL(DOUBLE) :: LOCAL_SUMMARY(5), MIN_SUMMARY(5), MAX_SUMMARY(5)
+      REAL(DOUBLE) :: SCALE
+      INTEGER :: I, J, ABORT_ERROR
+      LOGICAL :: MISMATCH
+
+      LOCAL_SUMMARY = 0.D0
+      DO J = 1, NW
+         LOCAL_SUMMARY(1) = LOCAL_SUMMARY(1) + DBLE(J)*E(J)
+         LOCAL_SUMMARY(2) = LOCAL_SUMMARY(2) + DBLE(J)*PED(J)
+         LOCAL_SUMMARY(3) = LOCAL_SUMMARY(3) + DBLE(J)*SCNSTY(J)
+         DO I = 1, MF(J)
+            LOCAL_SUMMARY(4) = LOCAL_SUMMARY(4) + DBLE(I+J)*PF(I,J)
+            LOCAL_SUMMARY(5) = LOCAL_SUMMARY(5) + DBLE(I+J)*QF(I,J)
+         END DO
+      END DO
+      CALL MPI_Allreduce(LOCAL_SUMMARY, MIN_SUMMARY, 5,            &
+                         MPI_DOUBLE_PRECISION, MPI_MIN, MPI_COMM_WORLD, ierr)
+      CALL MPI_Allreduce(LOCAL_SUMMARY, MAX_SUMMARY, 5,            &
+                         MPI_DOUBLE_PRECISION, MPI_MAX, MPI_COMM_WORLD, ierr)
+      MISMATCH = .FALSE.
+      DO I = 1, 5
+         SCALE = MAX(1.D0, ABS(MIN_SUMMARY(I)), ABS(MAX_SUMMARY(I)))
+         IF (ABS(MAX_SUMMARY(I)-MIN_SUMMARY(I)) > 1.D-12*SCALE)   &
+            MISMATCH = .TRUE.
+      END DO
+      IF (MISMATCH) THEN
+         IF (myid == 0) WRITE (*,'(A,I0)')                        &
+            'ORBOPT pair state diverged across MPI ranks; group=', GROUP_ID
+         CALL MPI_Abort(MPI_COMM_WORLD, 91, ABORT_ERROR)
+      ENDIF
+      END SUBROUTINE ASSERT_PAIR_STATE_CONSISTENCY
+
+      SUBROUTINE IMPROVE_ORBITAL_GROUP(EOL, GROUP_ID, LSORT, DAMPMX)
+      LOGICAL, INTENT(IN) :: EOL, LSORT
+      INTEGER, INTENT(IN) :: GROUP_ID
+      REAL(DOUBLE), INTENT(INOUT) :: DAMPMX
+      TYPE(ORBITAL_CANDIDATE_T) :: CANDIDATES(2)
+      INTEGER :: I, MEMBER_POSITION, J, MEMBER_COUNT
+      REAL(DOUBLE) :: SHARED_DAMPING
+      LOGICAL :: LOCAL_BAD, GLOBAL_BAD
+      CHARACTER(LEN=128) :: DETAIL, MEMBER_DETAIL
+
+      IF (.NOT.PAIR_TABLE_READY)                                  &
+         ERROR STOP 'ORBOPT pair transaction used before initialization'
+      IF (GROUP_ID < 1 .OR. GROUP_ID > PAIR_GROUP_COUNT)          &
+         ERROR STOP 'ORBOPT invalid pair group id'
+
+      MEMBER_COUNT = PAIR_GROUP_SIZE(GROUP_ID)
+      PAIR_SCHEDULE_SEQUENCE = PAIR_SCHEDULE_SEQUENCE + 1
+      CALL SAVE_PAIR_SNAPSHOT
+
+  100 CONTINUE
+      LOCAL_BAD = .FALSE.
+      DETAIL = ''
+      SHARED_DAMPING = 0.D0
+
+      DO MEMBER_POSITION = 1, MEMBER_COUNT
+         J = PAIR_GROUP_MEMBER(MEMBER_POSITION,GROUP_ID)
+         CALL PREPARE_PAIR_CANDIDATE(EOL, J, LSORT,               &
+                                     CANDIDATES(MEMBER_POSITION))
+!        Deterministic test seam.  It is inert unless every selected
+!        GRASP_PAIR_FAULT_* control matches this transaction.
+         IF (GROUP_ID == PAIR_FAULT_GROUP .AND.                    &
+             MEMBER_POSITION == PAIR_FAULT_MEMBER .AND.           &
+             (PAIR_FAULT_RETRY < 0 .OR.                           &
+              PAIR_RETRY_COUNT(GROUP_ID) == PAIR_FAULT_RETRY) .AND. &
+             ORBOPT_ITERATION == PAIR_FAULT_ITERATION .AND.       &
+             TRIM(PAIR_FAULT_PHASE) == 'raw') THEN
+            CANDIDATES(MEMBER_POSITION)%PREPARE_FAILED = .TRUE.
+            CANDIDATES(MEMBER_POSITION)%DETAIL = 'injected_failure'
+         ENDIF
+         IF (CANDIDATES(MEMBER_POSITION)%PREPARE_FAILED) THEN
+            LOCAL_BAD = .TRUE.
+            IF (LEN_TRIM(DETAIL) == 0)                            &
+               DETAIL = CANDIDATES(MEMBER_POSITION)%DETAIL
+         ENDIF
+         SHARED_DAMPING = MAX(SHARED_DAMPING,                     &
+              CANDIDATES(MEMBER_POSITION)%DAMPING_SUGGESTED)
+         CALL TRACE_CANDIDATE(GROUP_ID, MEMBER_POSITION,          &
+              CANDIDATES(MEMBER_POSITION), 0.D0, 'raw',           &
+              MERGE('reject  ', 'prepared',                       &
+                    CANDIDATES(MEMBER_POSITION)%PREPARE_FAILED),  &
+              CANDIDATES(MEMBER_POSITION)%DETAIL)
+      END DO
+      CALL RESTORE_PAIR_SNAPSHOT
+      CALL CONSENSUS_BAD(LOCAL_BAD, GLOBAL_BAD, DETAIL)
+      IF (GLOBAL_BAD) GOTO 800
+
+      IF (PAIR_RETRY_COUNT(GROUP_ID) > 0) SHARED_DAMPING =        &
+           MAX(SHARED_DAMPING,                                    &
+               RETRY_PAIR_DAMPING(PAIR_RETRY_COUNT(GROUP_ID)))
+      SHARED_DAMPING = MIN(0.9D0, MAX(0.D0, SHARED_DAMPING))
+!     Rank 0 owns the sole coefficient used for this transaction.
+      CALL MPI_Bcast(SHARED_DAMPING, 1, MPI_DOUBLE_PRECISION, 0,  &
+                     MPI_COMM_WORLD, ierr)
+      DO MEMBER_POSITION = 1, MEMBER_COUNT
+         CALL APPLY_SHARED_DAMPING(CANDIDATES(MEMBER_POSITION),   &
+                                   SHARED_DAMPING)
+      END DO
+
+!     Check the damped pair before ORTHY.  No member can be accepted alone.
+      LOCAL_BAD = .FALSE.
+      DETAIL = ''
+      DO MEMBER_POSITION = 1, MEMBER_COUNT
+         J = PAIR_GROUP_MEMBER(MEMBER_POSITION,GROUP_ID)
+         CALL CHECK_STORED_ORBITAL(J, GLOBAL_BAD, MEMBER_DETAIL)
+         LOCAL_BAD = LOCAL_BAD .OR. GLOBAL_BAD
+         IF (GLOBAL_BAD .AND. LEN_TRIM(DETAIL) == 0)              &
+            DETAIL = MEMBER_DETAIL
+         CALL TRACE_STORED_CANDIDATE(GROUP_ID, MEMBER_POSITION,   &
+              CANDIDATES(MEMBER_POSITION), SHARED_DAMPING,        &
+              'post_damp',                                        &
+              MERGE('reject', 'pass  ', GLOBAL_BAD), MEMBER_DETAIL)
+      END DO
+      CALL CONSENSUS_BAD(LOCAL_BAD, GLOBAL_BAD, DETAIL)
+      IF (GLOBAL_BAD) GOTO 800
+
+!     ORTHY may modify all orbitals of a member's kappa.  The full snapshot
+!     makes both the pair and those indirect changes part of one transaction.
+      IF (ORTHST) THEN
+         DO MEMBER_POSITION = 1, MEMBER_COUNT
+            J = PAIR_GROUP_MEMBER(MEMBER_POSITION,GROUP_ID)
+            CALL ORTHY(NW, J, LSORT)
+         END DO
+      ENDIF
+
+      IF (GROUP_ID == PAIR_FAULT_GROUP .AND.                      &
+          (PAIR_FAULT_RETRY < 0 .OR.                              &
+           PAIR_RETRY_COUNT(GROUP_ID) == PAIR_FAULT_RETRY) .AND.  &
+          ORBOPT_ITERATION == PAIR_FAULT_ITERATION .AND.          &
+          TRIM(PAIR_FAULT_PHASE) == 'post_orthy') THEN
+         J = PAIR_GROUP_MEMBER(MAX(1, MIN(MEMBER_COUNT,           &
+              PAIR_FAULT_MEMBER)), GROUP_ID)
+         PF(1,J) = IEEE_VALUE(PF(1,J), IEEE_QUIET_NAN)
+      ENDIF
+
+      LOCAL_BAD = .FALSE.
+      DETAIL = ''
+      DO J = 1, NW
+         IF (.NOT.ORBITAL_AFFECTED_BY_GROUP(J, GROUP_ID)) CYCLE
+         CALL CHECK_STORED_ORBITAL(J, GLOBAL_BAD, MEMBER_DETAIL)
+         LOCAL_BAD = LOCAL_BAD .OR. GLOBAL_BAD
+         IF (GLOBAL_BAD .AND. LEN_TRIM(DETAIL) == 0)              &
+            DETAIL = MEMBER_DETAIL
+         MEMBER_POSITION = 0
+         IF (J == PAIR_GROUP_MEMBER(1,GROUP_ID)) MEMBER_POSITION = 1
+         IF (MEMBER_COUNT == 2 .AND.                              &
+             J == PAIR_GROUP_MEMBER(2,GROUP_ID)) MEMBER_POSITION = 2
+         IF (MEMBER_POSITION > 0) CALL TRACE_STORED_CANDIDATE(    &
+              GROUP_ID,                                          &
+              MEMBER_POSITION, CANDIDATES(MEMBER_POSITION),       &
+              SHARED_DAMPING, 'post_orthy',                       &
+              MERGE('reject', 'pass  ', GLOBAL_BAD), MEMBER_DETAIL)
+      END DO
+      CALL CONSENSUS_BAD(LOCAL_BAD, GLOBAL_BAD, DETAIL)
+      IF (GLOBAL_BAD) GOTO 800
+
+      NSIC = MINVAL([(CANDIDATES(MEMBER_POSITION)%NSIC,           &
+                      MEMBER_POSITION=1,MEMBER_COUNT)])
+      DO MEMBER_POSITION = 1, MEMBER_COUNT
+         J = PAIR_GROUP_MEMBER(MEMBER_POSITION,GROUP_ID)
+         IF (ANY([(ODAMP_SNAPSHOT(PAIR_GROUP_MEMBER(I,GROUP_ID)) < 0.D0, &
+                  I=1,MEMBER_COUNT)])) THEN
+            ODAMP(J) = -SHARED_DAMPING
+         ELSE
+            ODAMP(J) = SHARED_DAMPING
+         ENDIF
+      END DO
+      MTP0 = MTP0_SNAPSHOT
+      MTP = MTP_SNAPSHOT
+      DAMPMX = MAX(DAMPMX, SHARED_DAMPING)
+      IF (myid == 0) THEN
+         WRITE (*,'(A,I0,A,F5.2,A)',ADVANCE='NO')                 &
+            'ORBOPT pair group ', GROUP_ID, ' committed damping=', &
+            SHARED_DAMPING, ' members='
+         DO MEMBER_POSITION = 1, MEMBER_COUNT
+            J = PAIR_GROUP_MEMBER(MEMBER_POSITION,GROUP_ID)
+            WRITE (*,'(1X,I0,A)',ADVANCE='NO') NP(J), TRIM(NH(J))
+         END DO
+         WRITE (*,'(A)') ''
+      ENDIF
+      CALL TRACE_GROUP_DECISION(GROUP_ID, SHARED_DAMPING,         &
+                                 'final', 'commit', 'all_members_passed')
+      PAIR_RETRY_COUNT(GROUP_ID) = 0
+      CALL ASSERT_PAIR_STATE_CONSISTENCY(GROUP_ID)
+      RETURN
+
+  800 CONTINUE
+      CALL RESTORE_PAIR_SNAPSHOT
+      CALL ASSERT_SNAPSHOT_RESTORED(GROUP_ID)
+      PAIR_RETRY_COUNT(GROUP_ID) = PAIR_RETRY_COUNT(GROUP_ID) + 1
+      SHARED_DAMPING = RETRY_PAIR_DAMPING(PAIR_RETRY_COUNT(GROUP_ID))
+      IF (myid == 0) WRITE (*,'(A,I0,A,I0,A,F5.2,2A)')            &
+         'ORBOPT pair group ', GROUP_ID, ' rolled back; retry=',  &
+         PAIR_RETRY_COUNT(GROUP_ID), ' damping=', SHARED_DAMPING, &
+         ' detail=', TRIM(DETAIL)
+      CALL TRACE_GROUP_DECISION(GROUP_ID, SHARED_DAMPING,         &
+                                 'final', 'rollback', DETAIL)
+      IF (PAIR_RETRY_COUNT(GROUP_ID) > MAX_PAIR_RETRIES) THEN
+         CALL ABORT_PAIR_TRANSACTION('ORBOPT pair retry limit exceeded', 92)
+      ENDIF
+      CALL ASSERT_PAIR_STATE_CONSISTENCY(GROUP_ID)
+      GOTO 100
+      END SUBROUTINE IMPROVE_ORBITAL_GROUP
+
+      SUBROUTINE ABORT_PAIR_TRANSACTION(MESSAGE, ERROR_CODE)
+      CHARACTER(LEN=*), INTENT(IN) :: MESSAGE
+      INTEGER, INTENT(IN) :: ERROR_CODE
+      INTEGER :: ABORT_ERROR
+      IF (myid == 0) WRITE (*,'(A)') 'ORBOPT fatal: '//TRIM(MESSAGE)
+      CALL MPI_Abort(MPI_COMM_WORLD, ERROR_CODE, ABORT_ERROR)
+      ERROR STOP MESSAGE
+      END SUBROUTINE ABORT_PAIR_TRANSACTION
+
+      END MODULE ORBOPT_PAIR_TRANSACTION_C

@@ -51,7 +51,14 @@
                                   SAVE_RWFN_ITERATIONS,              &
                                   ROUND_ROLLBACK_GUARD,              &
                                   MAX_ROUND_ROLLBACKS,               &
-                                  MIN_STATE_OVERLAP
+                                  MIN_STATE_OVERLAP,                &
+                                  PAIR_TRANSACTION_ENABLED
+      USE ORBOPT_PAIR_TRANSACTION_C, ONLY:                         &
+                                  INITIALIZE_PAIR_TRANSACTION,     &
+                                  RELEASE_PAIR_TRANSACTION,        &
+                                  IMPROVE_ORBITAL_GROUP,           &
+                                  GROUP_FOR_ORBITAL,               &
+                                  PAIR_GROUP_COUNT
       USE ORBOPT_TRACE_C, ONLY: TRACE_SCF_BEGIN, TRACE_SCF_END,     &
                                 TRACE_MPI_SUMMARY, CLOSE_ORBOPT_TRACE,&
                                 TRACE_ROUND_DECISION, TRACE_ROUND_TARGETS
@@ -89,6 +96,7 @@
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
       INTEGER :: J, I, NIT, JSEQ, KOUNT, K, L_MPI, STRICT_STREAK
+      INTEGER :: GROUP_ID
       REAL(DOUBLE) :: WTAEV, WTAEV0, DAMPMX
       LOGICAL :: CONVG, CONVG_ENERGY, CONVG_ORBITAL, LSORT, dvdfirst
       LOGICAL :: CONVG_LEGACY, CONVG_STRICT, ENERGY_VALID
@@ -199,6 +207,7 @@
       WTAEV0 = 0.0
       STRICT_STREAK = 0
       dvdfirst = .false.
+      IF (PAIR_TRANSACTION_ENABLED) CALL INITIALIZE_PAIR_TRANSACTION
       DO NIT = 1, NSCF
          IF (MYID == 0) WRITE (*, 301) NIT
          CALL SET_ORBOPT_ITERATION(NIT)
@@ -216,11 +225,17 @@
 
          DAMPMX = 0.0
          IF (MYID == 0) WRITE (*, 302)
-         DO J = 1, NW
-            JSEQ = IORDER(J)
-            IF (LFIX(JSEQ)) CYCLE
-            CALL IMPROVmpi (EOL, JSEQ, LSORT, DAMPMX)
-         END DO
+         IF (PAIR_TRANSACTION_ENABLED) THEN
+            DO GROUP_ID = 1, PAIR_GROUP_COUNT
+               CALL IMPROVE_ORBITAL_GROUP(EOL, GROUP_ID, LSORT, DAMPMX)
+            END DO
+         ELSE
+            DO J = 1, NW
+               JSEQ = IORDER(J)
+               IF (LFIX(JSEQ)) CYCLE
+               CALL IMPROVmpi (EOL, JSEQ, LSORT, DAMPMX)
+            END DO
+         ENDIF
 !
 !   For KOUNT = 1 to NSIC: find the least self-consistent orbital;
 !   improve it
@@ -237,7 +252,14 @@
                   GO TO 3
                ENDIF
             ENDIF
-            CALL IMPROVmpi (EOL, K, LSORT, DAMPMX)
+            IF (PAIR_TRANSACTION_ENABLED) THEN
+               GROUP_ID = GROUP_FOR_ORBITAL(K)
+               IF (GROUP_ID == 0)                                &
+                  ERROR STOP 'SCFmpi: MAXARR selected no pair group'
+               CALL IMPROVE_ORBITAL_GROUP(EOL, GROUP_ID, LSORT, DAMPMX)
+            ELSE
+               CALL IMPROVmpi (EOL, K, LSORT, DAMPMX)
+            ENDIF
          END DO
 
          CALL MAXARR (K)
@@ -398,6 +420,7 @@
 !
       IF (myid .EQ. 0) CALL ENDSUM
       CALL END_ORBOPT_ROUND
+      IF (PAIR_TRANSACTION_ENABLED) CALL RELEASE_PAIR_TRANSACTION
       CALL CLOSE_ORBOPT_TRACE
 !
 !   Deallocate storage

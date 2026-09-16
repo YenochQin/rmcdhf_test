@@ -12,6 +12,7 @@
       LOGICAL :: SAVE_RWFN_ITERATIONS = .FALSE.
       LOGICAL :: WARN_UNBALANCED_PAIR = .TRUE.
       LOGICAL :: REQUIRE_BALANCED_PAIR = .FALSE.
+      LOGICAL :: PAIR_TRANSACTION_ENABLED = .FALSE.
       LOGICAL :: ENABLE_ORBITAL_GUARD = .FALSE.
       LOGICAL :: GUARD_AFTER_DAMPING = .FALSE.
       LOGICAL :: NODE_PROGRESS_GUARD = .FALSE.
@@ -25,6 +26,12 @@
       INTEGER :: ORBOPT_TRACE_UNIT = 735
       INTEGER :: ORBOPT_ITERATION = 0
       INTEGER :: MAX_ROUND_ROLLBACKS = 3
+      INTEGER :: MAX_PAIR_RETRIES = 3
+      INTEGER :: PAIR_FAULT_GROUP = 0
+      INTEGER :: PAIR_FAULT_MEMBER = 0
+      INTEGER :: PAIR_FAULT_RETRY = -1
+      INTEGER :: PAIR_FAULT_ITERATION = 1
+      CHARACTER(LEN=16) :: PAIR_FAULT_PHASE = 'raw'
       INTEGER :: TARGET_STATE_COUNT = 0
       CHARACTER(LEN=256) :: ORBOPT_TRACE_DIRECTORY = ''
       CHARACTER(LEN=1024) :: TARGET_STATE_SPEC = ''
@@ -53,6 +60,8 @@
                                SAVE_RWFN_ITERATIONS)
          CALL READ_LOGICAL_ENV('GRASP_REQUIRE_BALANCED_PAIR',       &
                                REQUIRE_BALANCED_PAIR)
+         CALL READ_LOGICAL_ENV('GRASP_PAIR_TRANSACTION',            &
+                               PAIR_TRANSACTION_ENABLED)
          CALL READ_LOGICAL_ENV('GRASP_ORBITAL_GUARD',               &
                                ENABLE_ORBITAL_GUARD)
          CALL READ_LOGICAL_ENV('GRASP_GUARD_AFTER_DAMPING',         &
@@ -86,6 +95,18 @@
                                MAX_REJECTS_PER_ORBITAL)
          CALL READ_INTEGER_ENV('GRASP_MAX_ROUND_ROLLBACKS',         &
                                MAX_ROUND_ROLLBACKS)
+         CALL READ_INTEGER_ENV('GRASP_MAX_PAIR_RETRIES',            &
+                               MAX_PAIR_RETRIES)
+         CALL READ_INTEGER_ENV('GRASP_PAIR_FAULT_GROUP',            &
+                               PAIR_FAULT_GROUP)
+         CALL READ_INTEGER_ENV('GRASP_PAIR_FAULT_MEMBER',           &
+                               PAIR_FAULT_MEMBER)
+         CALL READ_INTEGER_ENV('GRASP_PAIR_FAULT_RETRY',            &
+                               PAIR_FAULT_RETRY)
+         CALL READ_INTEGER_ENV('GRASP_PAIR_FAULT_ITERATION',        &
+                               PAIR_FAULT_ITERATION)
+         CALL READ_STRING_ENV('GRASP_PAIR_FAULT_PHASE',             &
+                              PAIR_FAULT_PHASE)
          CALL READ_STRING_ENV('GRASP_ROUND_TARGET_STATES',          &
                               TARGET_STATE_SPEC)
          CALL READ_STRING_ENV('GRASP_TARGET_STATE_LABELS',          &
@@ -135,6 +156,15 @@
                              ' using 3'
             MAX_ROUND_ROLLBACKS = 3
          ENDIF
+         IF (MAX_PAIR_RETRIES < 1) THEN
+            WRITE (*,'(A)') 'ORBOPT: max pair retries must be positive;'//&
+                             ' using 3'
+            MAX_PAIR_RETRIES = 3
+         ENDIF
+!        A pair transaction is meaningful only with a complete varied list.
+!        Turn on the existing input gate without conflating the two
+!        capabilities in diagnostics or trace output.
+         IF (PAIR_TRANSACTION_ENABLED) REQUIRE_BALANCED_PAIR = .TRUE.
       ENDIF
 
       CALL MPI_Bcast(TRACE_ORBOPT, 1, MPI_LOGICAL, 0,               &
@@ -142,6 +172,8 @@
       CALL MPI_Bcast(SAVE_RWFN_ITERATIONS, 1, MPI_LOGICAL, 0,       &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(REQUIRE_BALANCED_PAIR, 1, MPI_LOGICAL, 0,      &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(PAIR_TRANSACTION_ENABLED, 1, MPI_LOGICAL, 0,   &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(ENABLE_ORBITAL_GUARD, 1, MPI_LOGICAL, 0,       &
                      MPI_COMM_WORLD, ierr)
@@ -179,6 +211,18 @@
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(MAX_ROUND_ROLLBACKS, 1, MPI_INTEGER, 0,       &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(MAX_PAIR_RETRIES, 1, MPI_INTEGER, 0,           &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(PAIR_FAULT_GROUP, 1, MPI_INTEGER, 0,           &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(PAIR_FAULT_MEMBER, 1, MPI_INTEGER, 0,          &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(PAIR_FAULT_RETRY, 1, MPI_INTEGER, 0,           &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(PAIR_FAULT_ITERATION, 1, MPI_INTEGER, 0,       &
+                     MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(PAIR_FAULT_PHASE, LEN(PAIR_FAULT_PHASE),       &
+                     MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(REJECT_NODE_CHANGE, 1, MPI_LOGICAL, 0,        &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(ANCHOR_ID, LEN(ANCHOR_ID), MPI_CHARACTER, 0,  &
@@ -198,9 +242,10 @@
           NODE_PROGRESS_GUARD .OR.                                  &
           STRICT_SCF_CONVERGENCE .OR. DEFER_ORTHOGONALIZATION .OR. &
           STRICT_METHOD3 .OR. ROUND_ROLLBACK_GUARD .OR.             &
-          FIXED_REFERENCE_PROXY)) THEN
-         WRITE (*,'(A,11(1X,L1))') 'ORBOPT controls:',              &
+          FIXED_REFERENCE_PROXY .OR. PAIR_TRANSACTION_ENABLED)) THEN
+         WRITE (*,'(A,12(1X,L1))') 'ORBOPT controls:',              &
             TRACE_ORBOPT, REQUIRE_BALANCED_PAIR,                   &
+            PAIR_TRANSACTION_ENABLED,                              &
             ENABLE_ORBITAL_GUARD, GUARD_AFTER_DAMPING,              &
             STRICT_SCF_CONVERGENCE,                                 &
             SAVE_RWFN_ITERATIONS, DEFER_ORTHOGONALIZATION,         &
@@ -209,6 +254,10 @@
       ENDIF
       IF (myid == 0 .AND. NODE_PROGRESS_GUARD) THEN
          WRITE (*,'(A)') 'ORBOPT node guard: non-worsening distance to NNODEP'
+      ENDIF
+      IF (myid == 0 .AND. PAIR_TRANSACTION_ENABLED) THEN
+         WRITE (*,'(A,I0)') 'ORBOPT pair transaction enabled; max retries=', &
+                             MAX_PAIR_RETRIES
       ENDIF
       IF (myid == 0 .AND. (FIXED_ORBITAL_DAMPING /= 0.D0 .OR.     &
                            ENABLE_ORBITAL_GUARD .OR.                &

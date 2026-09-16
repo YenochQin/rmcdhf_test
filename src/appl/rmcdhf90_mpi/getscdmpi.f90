@@ -194,6 +194,7 @@
 !FF      ... Revised Sep. 2014
 !CFF      ODAMP(:NW) = 1.D0
       ODAMP(:NW) = 0.0D0
+      PED(:NW)   = 0.0D0
       SCNSTY(:NW) = 0.0D0
 
       WHERE (NAK(:NW) < 0)

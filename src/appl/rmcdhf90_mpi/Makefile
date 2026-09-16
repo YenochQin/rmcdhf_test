@@ -3,6 +3,7 @@ LIBS=-L ${GRASP}/lib/ -ldvd90 -lmpiu90 -l9290 -lmod
 FC_MODULES= -I ${GRASP}/src/lib/libdvd90 -I ${GRASP}/src/lib/mpi90 -I ${GRASP}/src/lib/lib9290 -I ${GRASP}/src/lib/libmod
 
 OBJS= \
+	orbopt_pair_types.o \
 	orbopt_control.o \
 	orbopt_round_state.o \
 	orbopt_trace.o \
@@ -83,6 +84,7 @@ OBJS= \
 	orthy_I.o \
 	improvmpi.o \
 	improvmpi_I.o \
+	orbopt_pair_transaction.o \
 	ispar.o \
 	ispar_I.o \
 	itjpo.o \

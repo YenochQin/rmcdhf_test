@@ -26,6 +26,15 @@ if(MPI_Fortran_FOUND)
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
 endif()
 
+# Pure grouping and retry-policy coverage for the production pair records.
+add_executable(test.rmcdhf_pair_transaction_logic
+    ../src/appl/rmcdhf90_mpi/orbopt_pair_types.f90
+    rmcdhf_orbopt/pair_transaction_logic.f90
+)
+target_link_libraries_Fortran(test.rmcdhf_pair_transaction_logic PUBLIC mod)
+add_test(NAME rmcdhf_pair_transaction_logic
+    COMMAND test.rmcdhf_pair_transaction_logic)
+
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME rmcdhf_orbopt_round_state_logic

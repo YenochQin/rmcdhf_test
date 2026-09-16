@@ -32,10 +32,7 @@
 !   L o c a l   V a r i a b l e s
 !-----------------------------------------------
       INTEGER :: I, MFJM3, MFJM2
-      LOGICAL :: FIRST
 !-----------------------------------------------
-!
-      DATA FIRST/ .TRUE./
 !
 !   The deferred corrections for the first two points are
 !   unnecessary, because the integration always commences
@@ -43,11 +40,8 @@
 !   deferred correction at the third and subsequent points
 !   only
 !
-      IF (FIRST) THEN
-         DP(:2) = 0.0D00
-         DQ(:2) = 0.0D00
-         FIRST = .FALSE.
-      ENDIF
+      DP(:2) = 0.0D00
+      DQ(:2) = 0.0D00
 !
 !   Intermediate points
 !

@@ -1,5 +1,7 @@
 !***********************************************************************
-      SUBROUTINE IMPROVmpi (EOL, J, LSORT, DAMPMX)
+      SUBROUTINE IMPROVmpi (EOL, J, LSORT, DAMPMX, PREPARE_ONLY,  &
+                            PREPARE_FAILED, FALLBACK_REQUESTED,    &
+                            PREPARE_INV, PREPARE_JP, PREPARE_NNP)
 !   The difference from the serial version is that it calls MPI        *
 !   version subroutines (setlagmpi, cofpotmpi, matrixmpi, newcompi).   *
 !                                                                      *
@@ -66,6 +68,11 @@
       INTEGER  :: J
       REAL(DOUBLE), INTENT(INOUT) :: DAMPMX
       LOGICAL  :: EOL, LSORT
+      LOGICAL, INTENT(IN), OPTIONAL :: PREPARE_ONLY
+      LOGICAL, INTENT(OUT), OPTIONAL :: PREPARE_FAILED
+      LOGICAL, INTENT(OUT), OPTIONAL :: FALLBACK_REQUESTED
+      INTEGER, INTENT(OUT), OPTIONAL :: PREPARE_INV, PREPARE_JP
+      INTEGER, INTENT(OUT), OPTIONAL :: PREPARE_NNP
 !-----------------------------------------------
 !   L o c a l   P a r a m e t e r s
 !-----------------------------------------------
@@ -81,14 +88,15 @@
       INTEGER :: NODES_OLD, NODES_CANDIDATE, MF_OLD
       INTEGER :: MTP0_OLD
       INTEGER :: REJECT_COUNT, INV_OLD, NSIC_OLD, METHOD_OLD
-      REAL(DOUBLE) :: ED1, GAMAJ, ED2, EOLD, WTAEV, DNORM, DNFAC
+      REAL(DOUBLE) :: ED1, ED2, EOLD, DNORM, DNFAC
       REAL(DOUBLE) :: P_SWAP, Q_SWAP
       REAL(DOUBLE) :: DEL1, DEL2, ODAMPJ
       REAL(DOUBLE) :: CANDIDATE_NORM, OLD_NORM, ORBITAL_OVERLAP
       REAL(DOUBLE) :: RADIUS_OLD, RADIUS_CANDIDATE
       REAL(DOUBLE) :: PZ_OLD, SCNSTY_OLD, ODAMP_OLD, ENERGY_CANDIDATE
-      LOGICAL :: FAIL, FIRST, REJECT_CANDIDATE, REJECT_LIMIT
+      LOGICAL :: FAIL, REJECT_CANDIDATE, REJECT_LIMIT
       LOGICAL :: FALLBACK
+      LOGICAL :: PREPARING
       CHARACTER(LEN=128) :: REJECT_DETAIL, QUALITY_DETAIL
       REAL(DOUBLE), DIMENSION(:), POINTER :: da_buffer
       INTEGER, DIMENSION(:), POINTER :: nda_buffer,ndcof_buffer,ndcof_disp
@@ -96,9 +104,10 @@
 !
 !   C Froese Fischer's IPR and ED1 parameter
 !
+!   These DATA variables are used only by the legacy commit path.  Pair
+!   candidates return before DAMPCK and derive damping from their snapshot.
       DATA IPR/ 0/
       DATA ED1/ 0.D0/
-      DATA FIRST/ .FALSE./
 !
 !
 !-----------------------------------------------------------------------
@@ -107,7 +116,13 @@
       I_MPI = MPI_INTEGER
 !      if (ISIZE.EQ.8) I_MPI = MPI_INTEGER8
 !
-      GAMAJ = GAMA(J)
+      PREPARING = .FALSE.
+      IF (PRESENT(PREPARE_ONLY)) PREPARING = PREPARE_ONLY
+      IF (PRESENT(PREPARE_FAILED)) PREPARE_FAILED = .FALSE.
+      IF (PRESENT(FALLBACK_REQUESTED)) FALLBACK_REQUESTED = .FALSE.
+      IF (PRESENT(PREPARE_INV)) PREPARE_INV = 0
+      IF (PRESENT(PREPARE_JP)) PREPARE_JP = 0
+      IF (PRESENT(PREPARE_NNP)) PREPARE_NNP = 0
       FALLBACK = .FALSE.
       EOLD = E(J)
       MF_OLD = MF(J)
@@ -252,6 +267,9 @@
       endif
 
       CALL SOLVE (J, FAIL, INV, JP, NNP)
+      IF (PRESENT(PREPARE_INV)) PREPARE_INV = INV
+      IF (PRESENT(PREPARE_JP)) PREPARE_JP = JP
+      IF (PRESENT(PREPARE_NNP)) PREPARE_NNP = NNP
       CALL TRACE_ORBITAL_UPDATE('solve_result', 0, J, EOLD, E(J),   &
                                 0.D0, 0.D0, INV, JP, NNP, FALLBACK,&
                                 FAIL)
@@ -260,6 +278,18 @@
 !
       IF (FAIL) THEN
          IF (MYID == 0) WRITE (*, 300) NP(J), NH(J), METHOD(J)
+!        The pair-transaction caller owns retry and fallback policy.  Return
+!        the failed raw attempt without changing METHOD, orthogonalising the
+!        accepted state, or recomputing SETLAG for only one partner.
+         IF (PREPARING) THEN
+            IF (PRESENT(PREPARE_FAILED)) PREPARE_FAILED = .TRUE.
+            IF (METHOD(J) /= 2 .AND. .NOT.STRICT_METHOD3) THEN
+               FALLBACK = .TRUE.
+               IF (PRESENT(FALLBACK_REQUESTED))                   &
+                  FALLBACK_REQUESTED = .TRUE.
+            ENDIF
+            RETURN
+         ENDIF
          IF (STRICT_METHOD3) THEN
             IF (MYID == 0) WRITE (*,'(A,I0,A,A)')                  &
                'ORBOPT strict METHOD=3 failed for ', NP(J), NH(J), &
@@ -326,12 +356,23 @@
       IF (METHOD(J) == 1) THEN
          DEL2 = DMAX1(DABS(1.D0 - DSQRT(DNORM)),DABS(DNFAC - 1.D0))
          IF (DEL1<P005 .AND. DEL2>P2) THEN
+            IF (PREPARING) THEN
+               IF (PRESENT(PREPARE_FAILED)) PREPARE_FAILED = .TRUE.
+               IF (PRESENT(FALLBACK_REQUESTED))                   &
+                  FALLBACK_REQUESTED = .TRUE.
+               RETURN
+            ENDIF
             METHOD(J) = 2
             GO TO 1
          ENDIF
       ELSE
          IF (DEL1<P0001 .AND. NSIC>1) NSIC = NSIC - 1
       ENDIF
+
+!     A prepared candidate remains in P/Q and scalar work state.  The pair
+!     transaction copies it to an independent buffer, restores the common
+!     snapshot, and alone decides damping, validation, and atomic commit.
+      IF (PREPARING) RETURN
 
 !   Optionally reject a pathological raw candidate before it can alter
 !   PF/QF through damping or orthogonalization. The historical path is
