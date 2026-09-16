@@ -10,12 +10,24 @@ space.  The runner freezes CSF, previous accepted wave, isodata, case policy,
 runtime controls, TF wave/baseline and a private copy of the controlled
 `rmcdhf_mpi` executable into the immutable anchor.  The experimental
 runner rejects a binary that does not advertise balanced-pair, round-rollback,
-fixed-reference, and anchor-trace capabilities; it cannot silently use the
-upstream module binary.  Runtime manifests also freeze the exact Thomas--Fermi
-method number and required capability list.  Interrupted TF-baseline
-publication is deterministically revalidated before RMCDHF may resume.  The
-`run_data_case.sh` adapter imports that same guard instead of maintaining a
-second transaction implementation.
+fixed-reference, pair-transaction, and anchor-trace capabilities; it cannot
+silently use the upstream module binary.  Runtime manifests also freeze the
+exact Thomas--Fermi method number and required capability list.  Interrupted
+TF-baseline publication is deterministically revalidated before RMCDHF may
+resume.  The `run_data_case.sh` adapter imports that same guard instead of
+maintaining a second transaction implementation.
+
+Updated 2026-09-16: `run_orbopt_stage.py` predates the Fortran partner-group
+atomic-update transaction (`orbopt_pair_transaction.f90`), so its
+`rmcdhf_environment()` did not enable it and every stage silently ran the
+legacy sequential-orbital update path.  `GRASP_PAIR_TRANSACTION="1"` and
+`GRASP_MAX_PAIR_RETRIES="3"` are now set unconditionally alongside the other
+production controls, and `GRASP_PAIR_TRANSACTION` was added to
+`REQUIRED_RMCDHF_CAPABILITIES` so a binary built without that capability is
+rejected before any stage work starts, rather than degrading silently.  The
+round-level acceptance checks in `orbopt_stage_guard.py` are unchanged: pair
+transactions operate inside a round, below the granularity the round guard
+inspects.
 
 ## Runtime contract
 
