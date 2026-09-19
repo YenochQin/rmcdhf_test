@@ -24,6 +24,7 @@
 
       USE def_C
       USE fixd_C
+      USE corre_C, ONLY: LCORRE
       USE orb_C
       USE orthct_C
       USE scf_C
@@ -69,6 +70,9 @@
       NSCF = 12
       NSIC = 2 + (NW - NFIX)/4
       ORTHST = .FALSE.
+!     This path has no spectroscopic-orbital prompt, so classify every
+!     orbital as spectroscopic rather than leaving LCORRE undefined.
+      LCORRE(:NW) = .FALSE.
 
       RETURN
       END SUBROUTINE GETALDmpi

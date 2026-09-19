@@ -48,7 +48,7 @@
       USE default_C
       USE vast_kind_param, ONLY: DOUBLE
       USE parameter_def, ONLY: NNNP
-      USE coun_C, ONLY: THRESH, COUNT_CONTEXT
+      USE coun_C, ONLY: THRESH, COUNT_CONTEXT, COUNT_TRACE_RANK
       USE def_C, ONLY: ACCY
       USE grid_C, ONLY: R
        USE core_C
@@ -109,6 +109,7 @@
       CALL startmpi2 (myid, nprocs, host, lenhost, ncount1,       &
                       startdir, permdir, tmpdir, 'RMCDHF_MPI')
       CALL SET_ORBOPT_TRACE_DIRECTORY(startdir)
+      COUNT_TRACE_RANK = myid
       CALL INIT_ORBOPT_CONTROL
       WRITE (idstring, '(I3.3)') myid
       lenperm = LEN_TRIM (permdir)

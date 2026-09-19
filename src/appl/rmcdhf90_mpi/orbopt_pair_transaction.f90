@@ -15,6 +15,7 @@
       USE def_C, ONLY: ACCY, NSIC, DP, DQ
       USE damp_C, ONLY: ODAMP
       USE fixd_C, ONLY: LFIX
+      USE corre_C, ONLY: LCORRE
       USE int_C, ONLY: P, Q, P0, Q0, MTP0, TF, TG, XU, XV
       USE mpi_C
       USE node_C, ONLY: NNODEP
@@ -30,8 +31,10 @@
             MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO, REJECT_NODE_CHANGE, &
             NODE_PROGRESS_GUARD, MAX_PAIR_RETRIES, TRACE_ORBOPT,   &
             PAIR_FAULT_GROUP, PAIR_FAULT_MEMBER, PAIR_FAULT_RETRY, &
-            PAIR_FAULT_ITERATION, PAIR_FAULT_PHASE, ORBOPT_ITERATION
-      USE ORBOPT_METRICS_C, ONLY: CHECK_ORBITAL_QUALITY
+            PAIR_FAULT_ITERATION, PAIR_FAULT_PHASE, ORBOPT_ITERATION, &
+            RECORD_NODE_MISMATCH, MAX_NODE_MISMATCH_ITERATIONS
+      USE ORBOPT_METRICS_C, ONLY: CHECK_ORBITAL_QUALITY,             &
+            MAX_SAME_KAPPA_OVERLAP
       USE ORBOPT_PAIR_TYPES_C
       USE ORBOPT_TRACE_C, ONLY: TRACE_PAIR_EVENT
       USE improvmpi_I
@@ -264,7 +267,8 @@
            CANDIDATE%MTP, E_SNAPSHOT(J), CANDIDATE%ENERGY,       &
            CANDIDATE%FALLBACK_REQUESTED,                          &
            CANDIDATE%PREPARE_FAILED, LABELS, DETAIL,               &
-           PAIR_SCHEDULE_SEQUENCE)
+           PAIR_SCHEDULE_SEQUENCE, CANDIDATE%SAME_KAPPA_OVERLAP,  &
+           CANDIDATE%SAME_KAPPA_PARTNER)
       END SUBROUTINE TRACE_CANDIDATE
 
       SUBROUTINE TRACE_STORED_CANDIDATE(GROUP_ID, POSITION,       &
@@ -282,6 +286,11 @@
            STORED%NODES_CANDIDATE)
       STORED%MTP = MF(CANDIDATE%J)
       STORED%ENERGY = E(CANDIDATE%J)
+!     The raw-phase value on CANDIDATE is now stale; PF/QF(:,J) has since
+!     been damped and possibly reorthogonalised.
+      CALL MAX_SAME_KAPPA_OVERLAP(CANDIDATE%J, PF(:,CANDIDATE%J),  &
+           QF(:,CANDIDATE%J), MF(CANDIDATE%J),                    &
+           STORED%SAME_KAPPA_OVERLAP, STORED%SAME_KAPPA_PARTNER)
       CALL TRACE_CANDIDATE(GROUP_ID, POSITION, STORED,            &
            SHARED_DAMPING, PHASE, DECISION, DETAIL)
       END SUBROUTINE TRACE_STORED_CANDIDATE
@@ -393,6 +402,9 @@
            CANDIDATE%RADIUS_CANDIDATE, CANDIDATE%NODES_OLD,      &
            CANDIDATE%NODES_CANDIDATE)
       CANDIDATE%DNORM = CANDIDATE%NORM
+      CALL MAX_SAME_KAPPA_OVERLAP(J, CANDIDATE%P, CANDIDATE%Q,   &
+           CANDIDATE%MTP, CANDIDATE%SAME_KAPPA_OVERLAP,           &
+           CANDIDATE%SAME_KAPPA_PARTNER)
       CALL CHECK_CANDIDATE_NUMERICS(CANDIDATE)
       END SUBROUTINE PREPARE_PAIR_CANDIDATE
 
@@ -427,7 +439,8 @@
               CANDIDATE%RADIUS_OLD, CANDIDATE%RADIUS_CANDIDATE,   &
               CANDIDATE%NODES_OLD, CANDIDATE%NODES_CANDIDATE,     &
               NNODEP(J), MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO,   &
-              REJECT_NODE_CHANGE, NODE_PROGRESS_GUARD, BAD, DETAIL)
+              REJECT_NODE_CHANGE .AND. .NOT.LCORRE(J),             &
+              NODE_PROGRESS_GUARD, BAD, DETAIL)
       ENDIF
       IF (BAD) THEN
          CANDIDATE%PREPARE_FAILED = .TRUE.
@@ -600,9 +613,11 @@
             DETAIL = 'non_finite_metrics'
          ENDIF
       ENDIF
+!     NNODEP is physical only for spectroscopic orbitals (see solve.f90).
       IF (.NOT.BAD) CALL CHECK_ORBITAL_QUALITY(OVERLAP, RADIUS_OLD, &
            RADIUS_NEW, NODES_OLD, NODES_NEW, NNODEP(J),            &
-           MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO, REJECT_NODE_CHANGE, &
+           MIN_ORBITAL_OVERLAP, MAX_RADIUS_RATIO,                  &
+           REJECT_NODE_CHANGE .AND. .NOT.LCORRE(J),                &
            NODE_PROGRESS_GUARD, BAD, DETAIL)
       END SUBROUTINE CHECK_STORED_ORBITAL
 
@@ -717,7 +732,10 @@
       INTEGER :: I, MEMBER_POSITION, J, MEMBER_COUNT
       REAL(DOUBLE) :: SHARED_DAMPING
       LOGICAL :: LOCAL_BAD, GLOBAL_BAD
-      CHARACTER(LEN=128) :: DETAIL, MEMBER_DETAIL
+      CHARACTER(LEN=128) :: DETAIL, MEMBER_DETAIL, COMMIT_DETAIL
+      INTEGER :: NODES_COMMITTED, MISMATCH_STREAK
+      LOGICAL :: MISMATCH_EXCEEDED, NODES_UNCONVERGED
+      REAL(DOUBLE) :: COMMITTED_SGN
 
       IF (.NOT.PAIR_TABLE_READY)                                  &
          ERROR STOP 'ORBOPT pair transaction used before initialization'
@@ -858,8 +876,46 @@
          END DO
          WRITE (*,'(A)') ''
       ENDIF
+!     The progress guard passes a candidate that is merely no worse than the
+!     stored orbital, so a baseline that never reaches NNODEP would commit
+!     forever while reporting success.  Record what was actually committed
+!     and fail once a node-checked orbital has drifted for too long.
+      NODES_UNCONVERGED = .FALSE.
+      LOCAL_BAD = .FALSE.
+      DETAIL = ''
+      IF (NODE_PROGRESS_GUARD .AND. REJECT_NODE_CHANGE) THEN
+         DO MEMBER_POSITION = 1, MEMBER_COUNT
+            J = PAIR_GROUP_MEMBER(MEMBER_POSITION,GROUP_ID)
+            IF (LCORRE(J)) CYCLE
+            COUNT_CONTEXT = J
+            CALL COUNT(PF(:NNNP,J), MF(J), NODES_COMMITTED,        &
+                       COMMITTED_SGN)
+            CALL RECORD_NODE_MISMATCH(J,                            &
+                 NODES_COMMITTED == NNODEP(J), MISMATCH_STREAK,     &
+                 MISMATCH_EXCEEDED)
+            IF (MISMATCH_STREAK == 0) CYCLE
+            NODES_UNCONVERGED = .TRUE.
+            IF (myid == 0) WRITE (*,'(A,I0,1X,A,A,I0,A,I0,A,I0,A)') &
+               'ORBOPT node mismatch committed for orbital ',       &
+               NP(J), TRIM(NH(J)), ': counted=', NODES_COMMITTED,   &
+               ' expected=', NNODEP(J), ' for ', MISMATCH_STREAK,   &
+               ' consecutive iterations'
+            IF (MISMATCH_EXCEEDED) THEN
+               LOCAL_BAD = .TRUE.
+               DETAIL = 'ORBOPT node count never reached NNODEP'
+            ENDIF
+         END DO
+      ENDIF
+!     Abort on one identical decision, as for every other group verdict.
+      CALL CONSENSUS_BAD(LOCAL_BAD, GLOBAL_BAD, DETAIL)
+      IF (GLOBAL_BAD) CALL ABORT_PAIR_TRANSACTION(DETAIL, 92)
+      IF (NODES_UNCONVERGED) THEN
+         COMMIT_DETAIL = 'nodes_unconverged'
+      ELSE
+         COMMIT_DETAIL = 'all_members_passed'
+      ENDIF
       CALL TRACE_GROUP_DECISION(GROUP_ID, SHARED_DAMPING,         &
-                                 'final', 'commit', 'all_members_passed')
+                                 'final', 'commit', COMMIT_DETAIL)
       PAIR_RETRY_COUNT(GROUP_ID) = 0
       CALL ASSERT_PAIR_STATE_CONSISTENCY(GROUP_ID)
       RETURN

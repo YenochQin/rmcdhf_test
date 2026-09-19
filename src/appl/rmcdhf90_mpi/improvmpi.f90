@@ -44,6 +44,7 @@
             STRICT_METHOD3, GUARD_AFTER_DAMPING, NODE_PROGRESS_GUARD
       USE ORBOPT_METRICS_C, ONLY: CALCULATE_ORBITAL_METRICS
       USE ORBOPT_METRICS_C, ONLY: CHECK_ORBITAL_QUALITY
+      USE ORBOPT_METRICS_C, ONLY: MAX_SAME_KAPPA_OVERLAP
       USE ORBOPT_TRACE_C, ONLY: TRACE_ORBITAL_UPDATE,               &
                                 TRACE_ORBITAL_METRICS
 !-----------------------------------------------
@@ -92,6 +93,8 @@
       REAL(DOUBLE) :: P_SWAP, Q_SWAP
       REAL(DOUBLE) :: DEL1, DEL2, ODAMPJ
       REAL(DOUBLE) :: CANDIDATE_NORM, OLD_NORM, ORBITAL_OVERLAP
+      REAL(DOUBLE) :: SAME_KAPPA_OVERLAP
+      INTEGER :: SAME_KAPPA_PARTNER
       REAL(DOUBLE) :: RADIUS_OLD, RADIUS_CANDIDATE
       REAL(DOUBLE) :: PZ_OLD, SCNSTY_OLD, ODAMP_OLD, ENERGY_CANDIDATE
       LOGICAL :: FAIL, REJECT_CANDIDATE, REJECT_LIMIT
@@ -343,10 +346,16 @@
          CALL CALCULATE_ORBITAL_METRICS(J, CANDIDATE_NORM, OLD_NORM,&
               ORBITAL_OVERLAP, RADIUS_OLD, RADIUS_CANDIDATE,       &
               NODES_OLD, NODES_CANDIDATE)
-         IF (TRACE_ORBOPT) CALL TRACE_ORBITAL_METRICS(0, J,        &
-              CANDIDATE_NORM, OLD_NORM, ORBITAL_OVERLAP,           &
-              RADIUS_OLD, RADIUS_CANDIDATE, NODES_OLD,             &
-              NODES_CANDIDATE, MF(J), MTP0, E(J)-EOLD)
+         IF (TRACE_ORBOPT) THEN
+            CALL MAX_SAME_KAPPA_OVERLAP(J, P(:MTP0), Q(:MTP0), MTP0,&
+                 SAME_KAPPA_OVERLAP, SAME_KAPPA_PARTNER)
+            CALL TRACE_ORBITAL_METRICS(0, J,                      &
+                 CANDIDATE_NORM, OLD_NORM, ORBITAL_OVERLAP,        &
+                 RADIUS_OLD, RADIUS_CANDIDATE, NODES_OLD,          &
+                 NODES_CANDIDATE, MF(J), MTP0, E(J)-EOLD,          &
+                 SAME_KAPPA_OVERLAP=SAME_KAPPA_OVERLAP,            &
+                 SAME_KAPPA_PARTNER=SAME_KAPPA_PARTNER)
+         ENDIF
       ENDIF
 !
 !   Check if different method should be used or if improvement
@@ -476,10 +485,13 @@
          CALL CALCULATE_ORBITAL_METRICS(J, CANDIDATE_NORM, OLD_NORM,&
               ORBITAL_OVERLAP, RADIUS_OLD, RADIUS_CANDIDATE,       &
               NODES_OLD, NODES_CANDIDATE)
+         CALL MAX_SAME_KAPPA_OVERLAP(J, PF(:,J), QF(:,J), MF(J),   &
+              SAME_KAPPA_OVERLAP, SAME_KAPPA_PARTNER)
          CALL TRACE_ORBITAL_METRICS(0, J, OLD_NORM, CANDIDATE_NORM,&
               ORBITAL_OVERLAP, RADIUS_CANDIDATE, RADIUS_OLD,       &
               NODES_CANDIDATE, NODES_OLD, MTP0, MF(J),            &
-              E(J)-EOLD, 'accepted_metrics')
+              E(J)-EOLD, 'accepted_metrics', SAME_KAPPA_OVERLAP,   &
+              SAME_KAPPA_PARTNER)
       ENDIF
       CALL TRACE_ORBITAL_UPDATE('accepted', 0, J, EOLD, E(J),       &
                                 DNORM, ODAMPJ, INV, JP, NNP,       &

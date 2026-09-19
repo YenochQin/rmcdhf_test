@@ -105,7 +105,7 @@
 !   sign of the function at this location
 !
       SGN = SIGN(1.0D00,FR(LCEXT(1)))
-      IF (TRACE_COUNT .AND. MTPFR > 300) THEN
+      IF (TRACE_COUNT .AND. MTPFR > 300 .AND. COUNT_TRACE_RANK == 0) THEN
          WRITE (734,'(A,I0,A,I0,A,ES16.8,A,ES16.8,A,I0)') 'COUNT_TRACE orbital=', &
               COUNT_CONTEXT, ' mtp=', MTPFR, ' emx=', EMX, ' thre=', THRESE, ' nodes=', NNCFF
          WRITE (734,'(A,I0)') 'COUNT_EXTREMA orbital=', COUNT_CONTEXT

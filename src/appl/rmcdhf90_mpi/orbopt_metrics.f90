@@ -8,6 +8,7 @@
       USE grid_C, ONLY: r, rp
       USE int_C, ONLY: p, q, mtp0
       USE tatb_C, ONLY: ta, mtp
+      USE orb_C, ONLY: nw, nak
       USE wave_C, ONLY: mf, pf, qf
       USE coun_C, ONLY: COUNT_CONTEXT
       USE count_I
@@ -15,6 +16,38 @@
       IMPLICIT NONE
 
       CONTAINS
+
+!     True inter-orbital distinctness, as opposed to the step-size overlap
+!     CALCULATE_ORBITAL_METRICS/CANDIDATE_METRICS report (candidate J vs.
+!     its own previous iterate).  Reports only; ORTHY already enforces
+!     orthogonality structurally, so this is a diagnostic cross-check, not
+!     an acceptance gate.
+      SUBROUTINE MAX_SAME_KAPPA_OVERLAP(J, CANDIDATE_P, CANDIDATE_Q,  &
+            CANDIDATE_MTP, MAX_OVERLAP, PARTNER)
+      INTEGER, INTENT(IN) :: J, CANDIDATE_MTP
+      REAL(DOUBLE), INTENT(IN) :: CANDIDATE_P(:), CANDIDATE_Q(:)
+      REAL(DOUBLE), INTENT(OUT) :: MAX_OVERLAP
+      INTEGER, INTENT(OUT) :: PARTNER
+      REAL(DOUBLE) :: OVERLAP
+      INTEGER :: K, LIMIT
+
+      MAX_OVERLAP = 0.D0
+      PARTNER = 0
+      DO K = 1, NW
+         IF (K == J .OR. NAK(K) /= NAK(J)) CYCLE
+         LIMIT = MIN(CANDIDATE_MTP, MF(K))
+         IF (LIMIT < 2) CYCLE
+         MTP = LIMIT
+         TA(1) = 0.D0
+         TA(2:MTP) = (CANDIDATE_P(2:MTP)*PF(2:MTP,K) +              &
+                       CANDIDATE_Q(2:MTP)*QF(2:MTP,K))*RP(2:MTP)
+         CALL QUAD(OVERLAP)
+         IF (ABS(OVERLAP) > ABS(MAX_OVERLAP)) THEN
+            MAX_OVERLAP = OVERLAP
+            PARTNER = K
+         ENDIF
+      END DO
+      END SUBROUTINE MAX_SAME_KAPPA_OVERLAP
 
       SUBROUTINE CALCULATE_ORBITAL_METRICS(J, CANDIDATE_NORM,       &
             OLD_NORM, OVERLAP, RADIUS_OLD, RADIUS_CANDIDATE,       &

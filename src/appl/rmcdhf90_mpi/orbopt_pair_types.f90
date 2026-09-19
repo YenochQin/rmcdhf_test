@@ -35,6 +35,11 @@
          REAL(DOUBLE) :: PED_PROPOSED = 0.D0
          INTEGER :: NODES_OLD = 0
          INTEGER :: NODES_CANDIDATE = 0
+!        True inter-orbital distinctness: max |<candidate|PF(:,K)>| over
+!        other orbitals K sharing this orbital's kappa.  Diagnostic only;
+!        see ORBOPT_METRICS_C::MAX_SAME_KAPPA_OVERLAP.
+         REAL(DOUBLE) :: SAME_KAPPA_OVERLAP = 0.D0
+         INTEGER :: SAME_KAPPA_PARTNER = 0
          LOGICAL :: SOLVE_FAILED = .FALSE.
          LOGICAL :: FALLBACK_REQUESTED = .FALSE.
          LOGICAL :: PREPARE_FAILED = .FALSE.

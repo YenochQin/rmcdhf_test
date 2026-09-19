@@ -5,4 +5,8 @@
 !                     Gediminas Gaigalas  10/05/17
       REAL(DOUBLE) :: THRESH
       INTEGER :: COUNT_CONTEXT = 0
+!     Every rank replicates the radial solve and shares one rmcdhf.log, so
+!     the node trace is written by one rank only.  Serial callers leave this
+!     at 0 and keep tracing.
+      INTEGER :: COUNT_TRACE_RANK = 0
       END MODULE coun_C

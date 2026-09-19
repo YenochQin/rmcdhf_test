@@ -50,6 +50,8 @@
       INTEGER :: MAX_REJECTS_PER_ORBITAL = 3
       LOGICAL :: REJECT_NODE_CHANGE = .TRUE.
       INTEGER :: ORBITAL_REJECT_COUNT(NNNW) = 0
+      INTEGER :: MAX_NODE_MISMATCH_ITERATIONS = 10
+      INTEGER :: NODE_MISMATCH_STREAK(NNNW) = 0
 
       CONTAINS
 
@@ -93,6 +95,8 @@
          CALL READ_REAL_ENV('GRASP_COUNT_ACCY', ACCY_OVERRIDE)
          CALL READ_INTEGER_ENV('GRASP_MAX_REJECTS_PER_ORBITAL',     &
                                MAX_REJECTS_PER_ORBITAL)
+         CALL READ_INTEGER_ENV('GRASP_MAX_NODE_MISMATCH_ITERATIONS', &
+                               MAX_NODE_MISMATCH_ITERATIONS)
          CALL READ_INTEGER_ENV('GRASP_MAX_ROUND_ROLLBACKS',         &
                                MAX_ROUND_ROLLBACKS)
          CALL READ_INTEGER_ENV('GRASP_MAX_PAIR_RETRIES',            &
@@ -150,6 +154,11 @@
             WRITE (*,'(A)') 'ORBOPT: max rejects must be positive;'//&
                              ' using 3'
             MAX_REJECTS_PER_ORBITAL = 3
+         ENDIF
+         IF (MAX_NODE_MISMATCH_ITERATIONS < 1) THEN
+            WRITE (*,'(A)') 'ORBOPT: max node-mismatch iterations'//  &
+                             ' must be positive; using 10'
+            MAX_NODE_MISMATCH_ITERATIONS = 10
          ENDIF
          IF (MAX_ROUND_ROLLBACKS < 1) THEN
             WRITE (*,'(A)') 'ORBOPT: max round rollbacks must be positive;'//&
@@ -209,6 +218,8 @@
       CALL MPI_Bcast(ACCY_OVERRIDE, 1, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(MAX_REJECTS_PER_ORBITAL, 1, MPI_INTEGER, 0,   &
                      MPI_COMM_WORLD, ierr)
+      CALL MPI_Bcast(MAX_NODE_MISMATCH_ITERATIONS, 1, MPI_INTEGER, 0, &
+                     MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(MAX_ROUND_ROLLBACKS, 1, MPI_INTEGER, 0,       &
                      MPI_COMM_WORLD, ierr)
       CALL MPI_Bcast(MAX_PAIR_RETRIES, 1, MPI_INTEGER, 0,           &
@@ -235,6 +246,7 @@
       CALL MPI_Bcast(ANCHOR_HASH, LEN(ANCHOR_HASH), MPI_CHARACTER, &
                      0, MPI_COMM_WORLD, ierr)
       ORBITAL_REJECT_COUNT = 0
+      NODE_MISMATCH_STREAK = 0
 
       IF (myid == 0 .AND. (TRACE_ORBOPT .OR. SAVE_RWFN_ITERATIONS .OR. &
           REQUIRE_BALANCED_PAIR .OR. ENABLE_ORBITAL_GUARD .OR.     &
@@ -253,7 +265,9 @@
             ROUND_REJECT_ENERGY_ORDER, FIXED_REFERENCE_PROXY
       ENDIF
       IF (myid == 0 .AND. NODE_PROGRESS_GUARD) THEN
-         WRITE (*,'(A)') 'ORBOPT node guard: non-worsening distance to NNODEP'
+         WRITE (*,'(A,I0,A)') 'ORBOPT node guard: non-worsening '//   &
+            'distance to NNODEP, requiring a match within ',          &
+            MAX_NODE_MISMATCH_ITERATIONS, ' committed iterations'
       ENDIF
       IF (myid == 0 .AND. PAIR_TRANSACTION_ENABLED) THEN
          WRITE (*,'(A,I0)') 'ORBOPT pair transaction enabled; max retries=', &
@@ -367,6 +381,24 @@
       COUNT = ORBITAL_REJECT_COUNT(J)
       EXCEEDED = COUNT > MAX_REJECTS_PER_ORBITAL
       END SUBROUTINE RECORD_ORBITAL_REJECTION
+
+!     The progress guard only compares a candidate against the previously
+!     stored orbital, so a baseline that never reaches NNODEP satisfies it
+!     indefinitely and commits while still violating the criterion the guard
+!     exists to enforce.  Bound how many committed iterations that can last.
+      SUBROUTINE RECORD_NODE_MISMATCH(J, MATCHED, STREAK, EXCEEDED)
+      INTEGER, INTENT(IN) :: J
+      LOGICAL, INTENT(IN) :: MATCHED
+      INTEGER, INTENT(OUT) :: STREAK
+      LOGICAL, INTENT(OUT) :: EXCEEDED
+      IF (MATCHED) THEN
+         NODE_MISMATCH_STREAK(J) = 0
+      ELSE
+         NODE_MISMATCH_STREAK(J) = NODE_MISMATCH_STREAK(J) + 1
+      ENDIF
+      STREAK = NODE_MISMATCH_STREAK(J)
+      EXCEEDED = STREAK > MAX_NODE_MISMATCH_ITERATIONS
+      END SUBROUTINE RECORD_NODE_MISMATCH
 
       SUBROUTINE CLEAR_ORBITAL_REJECTIONS(J)
       INTEGER, INTENT(IN) :: J
