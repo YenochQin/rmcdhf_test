@@ -93,7 +93,11 @@ case "$case_name:$mode" in
         prefix=e1_vv2
         varied_as1='5s,4p-,4p,4d-,4d'
         varied_as2='6s,5p-,5p,5d-,5d,4f-,4f'
+        varied_as3='7s,6p-,6p,6d-,6d,5f-,5f,5g-,5g'
+        varied_as4='8s,7p-,7p,7d-,7d,6f-,6f,6g-,6g'
+        varied_as5='9s,8p-,8p,8d-,8d,7f-,7f,7g-,7g'
         level_weight=1
+        max_stage=5
         ;;
     ni_ca_like:optimized)
         if (( external_fixture )); then
@@ -225,7 +229,12 @@ case "$case_name:$mode" in
         prefix=e1_cv
         varied_as1='4s,4p-,4p,4d-,4d,4f-,4f'
         varied_as2='5s,5p-,5p,5d-,5d,5f-,5f,5g-,5g'
+        varied_as3='6s,6p-,6p,6d-,6d,6f-,6f,6g-,6g'
+        varied_as4='7s,7p-,7p,7d-,7d,7f-,7f,7g-,7g'
+        varied_as5='8s,8p-,8p,8d-,8d,8f-,8f,8g-,8g'
+        varied_as6='9s,9p-,9p,9d-,9d,9f-,9f,9g-,9g'
         level_weight=5
+        max_stage=6
         ;;
     fe_i:optimized)
         source_dir=$data_root/Fe_I/e1_vv3
@@ -267,6 +276,11 @@ if [[ -n ${GRASP_ASF_SELECTION:-} ]]; then
 fi
 if [[ $level_weight != 1 && $level_weight != 5 ]]; then
     echo "GRASP_LEVEL_WEIGHT must be 1 (equal) or 5 (statistical)" >&2
+    exit 2
+fi
+rmcdhf_max_iterations=${GRASP_RMCDHF_MAX_ITERATIONS:-100}
+if ! [[ $rmcdhf_max_iterations =~ ^[1-9][0-9]*$ ]]; then
+    echo "GRASP_RMCDHF_MAX_ITERATIONS must be a positive integer" >&2
     exit 2
 fi
 
@@ -414,16 +428,17 @@ if [[ ${GRASP_DEBUG_EIGENVECTORS:-0} == 1 ]]; then
         # NDEF=1 also asks for the radial-grid and ACCY overrides before
         # GETOLD reads the ASF/weight/orbital selections.
         printf 'n\nn\n'
-        printf '%s\n%s\n%s\n\n100\n' \
-            "$asf_selection" "$level_weight" "$varied"
+        printf '%s\n%s\n%s\n\n%s\n' \
+            "$asf_selection" "$level_weight" "$varied" "$rmcdhf_max_iterations"
         printf 'n\n'
         # With non-default settings SCF asks for the orthonormalisation
         # order; 1 preserves the historical update-order behaviour.
         printf '1\n'
     } > "$output_dir/rmcdhf.stdin"
 else
-    printf 'y\n%s\n%s\n%s\n\n100\n' \
-        "$asf_selection" "$level_weight" "$varied" > "$output_dir/rmcdhf.stdin"
+    printf 'y\n%s\n%s\n%s\n\n%s\n' \
+        "$asf_selection" "$level_weight" "$varied" "$rmcdhf_max_iterations" \
+        > "$output_dir/rmcdhf.stdin"
 fi
 # Prepare the exact inputs without launching MPI for a submission preflight.
 if [[ ${GRASP_PREPARE_ONLY:-0} == 1 ]]; then
