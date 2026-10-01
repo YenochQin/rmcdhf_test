@@ -34,7 +34,7 @@ module list
 cmake --build build-debug -j4
 ctest --test-dir build-debug --output-on-failure
 cmake --install build-debug
-ldd build-debug/bin/rmcdhf_mpi | rg 'flexiblas|openblas'
+ldd build-debug/bin/rmcdhf_orbopt_mpi | rg 'flexiblas|openblas'
 ```
 
 Run `./configure.sh` without arguments for a Release `build/` directory. CMake

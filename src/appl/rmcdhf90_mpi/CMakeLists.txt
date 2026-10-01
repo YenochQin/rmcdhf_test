@@ -1,4 +1,4 @@
-add_executable(rmcdhf_mpi
+add_executable(rmcdhf_orbopt_mpi
     orbopt_pair_types.f90
     orbopt_control.f90
     orbopt_trace.f90
@@ -119,5 +119,5 @@ add_executable(rmcdhf_mpi
     scfmpi_I.f90
     rscfmpivu.f90
 )
-target_link_libraries_Fortran(rmcdhf_mpi PUBLIC dvd90 mpiu90 9290 mod)
-install(TARGETS rmcdhf_mpi DESTINATION bin/)
+target_link_libraries_Fortran(rmcdhf_orbopt_mpi PUBLIC dvd90 mpiu90 9290 mod)
+install(TARGETS rmcdhf_orbopt_mpi DESTINATION bin/)

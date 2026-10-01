@@ -1,4 +1,4 @@
-add_executable(rmcdhf
+add_executable(rmcdhf_orbopt
     mpi_s.f90
     dsubrs.f90
     dsubrs_I.f90
@@ -110,5 +110,5 @@ add_executable(rmcdhf
     strsum_I.f90
     rscfvu.f90
 )
-target_link_libraries_Fortran(rmcdhf PUBLIC dvd90 9290 mod)
-install(TARGETS rmcdhf DESTINATION bin/)
+target_link_libraries_Fortran(rmcdhf_orbopt PUBLIC dvd90 9290 mod)
+install(TARGETS rmcdhf_orbopt DESTINATION bin/)

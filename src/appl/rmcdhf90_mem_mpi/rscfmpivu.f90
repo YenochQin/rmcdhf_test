@@ -91,7 +91,7 @@
       permdir = '  '   ;    file1     = '  '
       tmpdir = '  '    ;    file2     = '  '
       CALL startmpi2 (myid, nprocs, host, lenhost, ncount1,       &
-                      startdir, permdir, tmpdir, 'RMCDHF_MPI')
+                      startdir, permdir, tmpdir, 'RMCDHF_ORBOPT_MEM_MPI')
       WRITE (idstring, '(I3.3)') myid
       lenperm = LEN_TRIM (permdir)
       lentmp = LEN_TRIM (tmpdir)
@@ -173,6 +173,6 @@
 !  Execution finished; Statistics output
 !=======================================================================
 
-      CALL stopmpi2 (myid, nprocs, host, lenhost, ncount1, 'RMCDHF_MPI')
+      CALL stopmpi2 (myid, nprocs, host, lenhost, ncount1, 'RMCDHF_ORBOPT_MEM_MPI')
 
       END PROGRAM RSCFmpiVU

@@ -41,3 +41,16 @@ if(Python3_Interpreter_FOUND)
         COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/rmcdhf_orbopt/test_round_state_logic.py)
 endif()
+
+# Workspace Python tooling uses the single Tools environment, including this
+# offline source-patcher test. Do not create a sibling Python environment.
+if(WIN32)
+    set(GRASP_GRID_TEST_PYTHON "${PROJECT_SOURCE_DIR}/../graspkit-tools/.venv/Scripts/python.exe")
+else()
+    set(GRASP_GRID_TEST_PYTHON "${PROJECT_SOURCE_DIR}/../graspkit-tools/.venv/bin/python")
+endif()
+if(EXISTS "${GRASP_GRID_TEST_PYTHON}")
+    add_test(NAME grasp_grid_patcher
+        COMMAND "${GRASP_GRID_TEST_PYTHON}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test_patch_grasp_grid.py")
+endif()

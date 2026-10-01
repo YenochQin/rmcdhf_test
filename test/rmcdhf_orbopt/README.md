@@ -13,7 +13,7 @@ Job 511 的诊断确认，当前 `mkdisks` 的第二个参数是基础目录，�
 results are stored below `../data/rmcdhf_test_data/results/`; paths outside
 that directory are rejected. The runner loads the site GRASP module
 (`grasp/grasp_2990_NNNP`) for the external `rangular_mpi` and `rwfnestimate`
-programs, while `rmcdhf_mpi` is always taken from this repository's build.
+programs, while `rmcdhf_orbopt_mpi` is always taken from this repository's build.
 The MPI module and orbital tracing are enabled automatically, and every
 artifact is written to a new output directory.
 
@@ -119,7 +119,7 @@ iteration wavefunctions.  `full` adds both Ni data families, AS1/AS2 and MPI
 1/2/4 balanced AS2 runs; it also chains the damped balanced Cl I wavefunctions
 through AS2--AS5 using `GRASP_PREVIOUS_WAVE`, instead of restarting each stage
 from the archived unbalanced wavefunction.  The Cl matrix also reruns B3 with
-serial `rangular`/`rmcdhf`; the full profile adds MPI 2/4-rank B4 comparisons.
+serial `rangular`/`rmcdhf_orbopt`; the full profile adds MPI 2/4-rank B4 comparisons.
 It also runs a B8 equal-weight comparison through `GRASP_LEVEL_WEIGHT=1`;
 supported automatic values are 1 (equal) and 5 (statistical).
 

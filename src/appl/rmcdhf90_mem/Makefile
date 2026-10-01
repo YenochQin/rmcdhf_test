@@ -1,4 +1,4 @@
-EXE=${GRASP}/bin/rmcdhf_mem
+EXE=${GRASP}/bin/rmcdhf_orbopt_mem
 LIBS=-L ${GRASP}/lib/ -ldvd90 -l9290 -lmod
 FC_MODULES= -I ${GRASP}/src/lib/libdvd90 -I ${GRASP}/src/lib/lib9290 -I ${GRASP}/src/lib/libmod
 

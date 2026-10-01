@@ -23,7 +23,7 @@ export GRASP_MPI_TMP=/home/workstation2/caltmp
 export GRASP_OMP_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 ranks=${SLURM_NTASKS:-46}
 [[ $ranks == 46 ]] || { echo "ranks ($ranks) != allocated CPUs (46)" >&2; exit 2; }
-test -x $GRASP_BINDIR/rmcdhf_mpi
+test -x $GRASP_BINDIR/rmcdhf_orbopt_mpi
 
 out=$root/data/rmcdhf_test_data/results/node-progress-nica-${SLURM_JOB_ID}
 env GRASP_TRACE_ORBOPT=1 GRASP_TRACE_INITIAL_ORBITALS=1 \

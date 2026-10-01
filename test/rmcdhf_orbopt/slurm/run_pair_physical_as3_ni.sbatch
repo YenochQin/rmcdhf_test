@@ -43,8 +43,8 @@ export GRASP_ALLOW_RADIAL_GRID_DIFFERENCE=1
 data=$root/data/rmcdhf_test_data
 previous=$data/results/pair-physical-as2-ni-652/e1_vv2as2.w
 test -s "$previous"
-test -x "$GRASP_BINDIR/rmcdhf_mpi"
-sha256sum "$GRASP_BINDIR/rmcdhf_mpi"
+test -x "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
+sha256sum "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
 
 out=$data/results/pair-physical-as3-ni-${SLURM_JOB_ID}
 GRASP_PREVIOUS_WAVE=$previous \

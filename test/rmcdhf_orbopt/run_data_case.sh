@@ -479,8 +479,8 @@ else
     echo "missing module-provided executable: rhfs_mpi (or fallback rhfs)" >&2
     exit 2
 fi
-if [[ ! -x $rmcdhf_bindir/rmcdhf_mpi ]]; then
-    echo "missing repository executable: $rmcdhf_bindir/rmcdhf_mpi" >&2
+if [[ ! -x $rmcdhf_bindir/rmcdhf_orbopt_mpi ]]; then
+    echo "missing repository executable: $rmcdhf_bindir/rmcdhf_orbopt_mpi" >&2
     exit 2
 fi
 export MPI_TMP=$mpi_tmp
@@ -570,7 +570,7 @@ if [[ -n $rmcdhf_timeout ]]; then
     if [[ ${GRASP_ABORT_ON_ORBOPT_ERROR:-0} == 1 ]]; then
         timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
             "$rmcdhf_timeout" "${grasp_mpi_launcher[@]}" \
-            "$rmcdhf_bindir/rmcdhf_mpi" \
+            "$rmcdhf_bindir/rmcdhf_orbopt_mpi" \
             < rmcdhf.stdin > rmcdhf.stdout 2>&1 &
         launcher_pid=$!
         while kill -0 "$launcher_pid" 2>/dev/null; do
@@ -586,17 +586,17 @@ if [[ -n $rmcdhf_timeout ]]; then
     else
         timeout --signal=TERM --kill-after="$rmcdhf_kill_after" \
             "$rmcdhf_timeout" "${grasp_mpi_launcher[@]}" \
-            "$rmcdhf_bindir/rmcdhf_mpi" \
+            "$rmcdhf_bindir/rmcdhf_orbopt_mpi" \
             < rmcdhf.stdin > rmcdhf.stdout 2>&1
     fi
 else
-    "${grasp_mpi_launcher[@]}" "$rmcdhf_bindir/rmcdhf_mpi" \
+    "${grasp_mpi_launcher[@]}" "$rmcdhf_bindir/rmcdhf_orbopt_mpi" \
         < rmcdhf.stdin > rmcdhf.stdout 2>&1
 fi
 rmcdhf_status=$?
 set -e
 printf '%s\n' "$rmcdhf_status" > rmcdhf.exitcode
-# Preserve the diagnostic unit written by rmcdhf_mpi before post-processing
+# Preserve the diagnostic unit written by rmcdhf_orbopt_mpi before post-processing
 # tools (notably rsave) rename or remove auxiliary files.
 if [[ -f rmcdhf.log ]]; then
     cp -f rmcdhf.log rmcdhf_diagnostic.log
@@ -621,7 +621,7 @@ if [[ $rmcdhf_status -ne 0 ]]; then
         echo "results: $output_dir"
         exit 0
     fi
-    echo "rmcdhf_mpi failed with exit code $rmcdhf_status" >&2
+    echo "rmcdhf_orbopt_mpi failed with exit code $rmcdhf_status" >&2
     exit "$rmcdhf_status"
 fi
 

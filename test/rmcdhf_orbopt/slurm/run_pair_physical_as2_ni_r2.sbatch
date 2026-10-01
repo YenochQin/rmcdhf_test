@@ -44,7 +44,7 @@ export GRASP_RMCDHF_TIMEOUT=90m
 data=$root/data/rmcdhf_test_data
 previous=$data/results/pair-strict-as1-ni-r1-20260916013000/e1_vv2as1.w
 test -s "$previous"
-test -x "$GRASP_BINDIR/rmcdhf_mpi"
+test -x "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
 
 out=$data/results/pair-physical-as2-ni-r2-${SLURM_JOB_ID}
 GRASP_PREVIOUS_WAVE=$previous \

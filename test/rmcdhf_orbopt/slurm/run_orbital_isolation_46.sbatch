@@ -61,13 +61,13 @@ export GRASP_MPI_TMP=/home/workstation2/caltmp/orbital-isolation-${SLURM_JOB_ID}
 export GRASP_OMP_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 ranks=${SLURM_NTASKS:-46}
 [[ $ranks == 46 ]] || { echo "ranks ($ranks) != allocated CPUs (46)" >&2; exit 2; }
-test -x "$GRASP_BINDIR/rmcdhf_mpi"
+test -x "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
 
 out=$root/data/rmcdhf_test_data/results/orbital-iso-${case_slug}-${SLURM_JOB_ID}
 mkdir -p "$out"
 printf 'case,%s\nprevious_wave,%s\nbinary,%s\n' \
-  "$case_name" "$previous" "$GRASP_BINDIR/rmcdhf_mpi" > "$out/manifest.csv"
-sha256sum "$GRASP_BINDIR/rmcdhf_mpi" >> "$out/manifest.csv"
+  "$case_name" "$previous" "$GRASP_BINDIR/rmcdhf_orbopt_mpi" > "$out/manifest.csv"
+sha256sum "$GRASP_BINDIR/rmcdhf_orbopt_mpi" >> "$out/manifest.csv"
 
 common=(GRASP_ALLOW_UNBALANCED=1 \
   GRASP_TRACE_ORBOPT=1 GRASP_TRACE_INITIAL_ORBITALS=1 \

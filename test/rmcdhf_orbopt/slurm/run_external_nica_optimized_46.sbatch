@@ -33,7 +33,7 @@ export GRASP_OMP_THREADS=1 OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 ranks=${SLURM_NTASKS:-46}
 [[ $ranks == 46 ]] || { echo "ranks ($ranks) != allocated CPUs (46)" >&2; exit 2; }
-test -x "$GRASP_BINDIR/rmcdhf_mpi"
+test -x "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
 
 out=$root/data/rmcdhf_test_data/results/external-nica-optimized-${SLURM_JOB_ID}
 mkdir -p "$out"
@@ -45,8 +45,8 @@ TRAPEXIT() {
     printf 'status,failed\nstage,%s\nexitcode,%s\n' "$stage" "$result" > "$out/status.csv"
   fi
 }
-printf 'binary,%s\n' "$GRASP_BINDIR/rmcdhf_mpi" > "$out/run_manifest.txt"
-sha256sum "$GRASP_BINDIR/rmcdhf_mpi" >> "$out/run_manifest.txt"
+printf 'binary,%s\n' "$GRASP_BINDIR/rmcdhf_orbopt_mpi" > "$out/run_manifest.txt"
+sha256sum "$GRASP_BINDIR/rmcdhf_orbopt_mpi" >> "$out/run_manifest.txt"
 common=(GRASP_ALLOW_UNBALANCED=1 \
   GRASP_TRACE_ORBOPT=1 GRASP_TRACE_INITIAL_ORBITALS=1 \
   GRASP_TRACE_RWFN=1 GRASP_ALLOW_RADIAL_GRID_DIFFERENCE=1 \

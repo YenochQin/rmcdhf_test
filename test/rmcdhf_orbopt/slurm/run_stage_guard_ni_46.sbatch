@@ -28,7 +28,7 @@ export GRASP_MPI_TMP=/home/workstation2/caltmp/stage-guard-ni-${SLURM_JOB_ID}
 export GRASP_OMP_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 ranks=${SLURM_NTASKS:-46}
 [[ $ranks == 46 ]] || { echo "ranks ($ranks) != allocated CPUs (46)" >&2; exit 2; }
-test -x "$GRASP_BINDIR/rmcdhf_mpi"
+test -x "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
 
 data=$root/data/rmcdhf_test_data
 previous=$data/results/ni-as1-as2-chain-590/as1/e1_vv2as1.w

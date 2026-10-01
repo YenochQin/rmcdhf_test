@@ -44,8 +44,8 @@ export GRASP_RMCDHF_MAX_ITERATIONS=200
 data=$root/data/rmcdhf_test_data
 previous=$data/results/pair-physical-as4-ni-716/e1_vv2as4.w
 test -s "$previous"
-test -x "$GRASP_BINDIR/rmcdhf_mpi"
-sha256sum "$GRASP_BINDIR/rmcdhf_mpi"
+test -x "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
+sha256sum "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
 
 out=$data/results/pair-physical-as5-ni-${SLURM_JOB_ID}
 GRASP_PREVIOUS_WAVE=$previous \

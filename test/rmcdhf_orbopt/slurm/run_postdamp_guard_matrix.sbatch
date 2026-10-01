@@ -43,8 +43,8 @@ run_case() {
 
 # The executable must advertise the experimental control before calculations;
 # this prevents silently running the historical pre-damping guard path.
-if ! strings /tmp/rmcdhf-build-debug/bin/rmcdhf_mpi | grep GRASP_GUARD_AFTER_DAMPING >/dev/null; then
-  echo 'missing GRASP_GUARD_AFTER_DAMPING in rmcdhf_mpi; implement the experimental path first' >&2
+if ! strings /tmp/rmcdhf-build-debug/bin/rmcdhf_orbopt_mpi | grep GRASP_GUARD_AFTER_DAMPING >/dev/null; then
+  echo 'missing GRASP_GUARD_AFTER_DAMPING in rmcdhf_orbopt_mpi; implement the experimental path first' >&2
   exit 2
 fi
 run_case ni_i_postdamp_05 ni_i -0.5 1

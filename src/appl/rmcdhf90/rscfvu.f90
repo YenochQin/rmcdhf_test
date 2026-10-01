@@ -86,7 +86,7 @@
       NPROCS = 1
 
       write(*,*)
-      write(*,*) 'RMCDHF'
+      write(*,*) 'RMCDHF_ORBOPT'
       write(*,*) 'This program determines the radial orbitals   '
       write(*,*) 'and the expansion coefficients of the CSFs         '
       write(*,*) 'in a self-onsistent field proceedure               '
@@ -95,7 +95,7 @@
                'Outputfiles: rwfn.out, rmix.out, rmcdhf.sum, rmcdhf.log'
       write(*,*)
 
-      CALL STARTTIME (NCOUNT1, 'RMCDHF')
+      CALL STARTTIME (NCOUNT1, 'RMCDHF_ORBOPT')
 
      OPEN(UNIT=734,FILE='rmcdhf.log',STATUS='UNKNOWN')
 
@@ -165,7 +165,7 @@
 !  Execution finished; Statistics output
 !=======================================================================
 
-      CALL STOPTIME (NCOUNT1, 'RMCDHF')
+      CALL STOPTIME (NCOUNT1, 'RMCDHF_ORBOPT')
 
       STOP
       END PROGRAM RSCFVU

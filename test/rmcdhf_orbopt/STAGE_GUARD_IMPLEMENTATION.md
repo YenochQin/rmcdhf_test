@@ -8,7 +8,7 @@ The production implementation has one source of truth under the paired
 `mcdhfmpi.sh` calls `run_orbopt_stage.py` for each strictly increasing active
 space.  The runner freezes CSF, previous accepted wave, isodata, case policy,
 runtime controls, TF wave/baseline and a private copy of the controlled
-`rmcdhf_mpi` executable into the immutable anchor.  The experimental
+`rmcdhf_orbopt_mpi` executable into the immutable anchor.  The experimental
 runner rejects a binary that does not advertise balanced-pair, round-rollback,
 fixed-reference, pair-transaction, and anchor-trace capabilities; it cannot
 silently use the upstream module binary.  Runtime manifests also freeze the
@@ -132,7 +132,7 @@ validated locally and Job 646 was not resubmitted.
 
 ## Validation
 
-The implementation builds `rmcdhf_mpi`, adds the Python logic tests to CTest,
+The implementation builds `rmcdhf_orbopt_mpi`, adds the Python logic tests to CTest,
 and covers sign flips, root swaps, subspace rotations, leakage, slow cumulative
 drift, input selection, missing/empty artifacts, RMCDHF timeout, wrapper
 failure, anchor tampering, and failures injected after snapshot/pointer

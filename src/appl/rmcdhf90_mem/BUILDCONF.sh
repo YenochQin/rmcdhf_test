@@ -1,4 +1,4 @@
-EXE=rmcdhf_mem
+EXE=rmcdhf_orbopt_mem
 LIBRARIES="dvd90 9290 mod"
 LAPACK=true
 FILES="

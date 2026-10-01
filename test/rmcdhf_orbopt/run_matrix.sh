@@ -41,7 +41,7 @@ output_root=$(cd "$output_root" && pwd)
 if [[ -n ${GRASP_BUILD_DIR:-} ]]; then
     source /usr/share/Modules/init/bash
     module load mpi/openmpi-x86_64
-    cmake --build "$GRASP_BUILD_DIR" --target rmcdhf_mpi -j"${GRASP_BUILD_JOBS:-4}"
+    cmake --build "$GRASP_BUILD_DIR" --target rmcdhf_orbopt_mpi -j"${GRASP_BUILD_JOBS:-4}"
 fi
 
 run_case() {

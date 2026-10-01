@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize and compare rmcdhf_mpi orbital-optimization CSV traces."""
+"""Summarize and compare rmcdhf_orbopt_mpi orbital-optimization CSV traces."""
 
 from __future__ import annotations
 

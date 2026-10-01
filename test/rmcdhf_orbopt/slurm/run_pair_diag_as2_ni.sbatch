@@ -45,7 +45,7 @@ export GRASP_TRACE_COUNT=1
 data=$root/data/rmcdhf_test_data
 previous=$data/results/pair-strict-as1-ni-r1-20260916013000/e1_vv2as1.w
 test -s "$previous"
-test -x "$GRASP_BINDIR/rmcdhf_mpi"
+test -x "$GRASP_BINDIR/rmcdhf_orbopt_mpi"
 
 out=$data/results/pair-diag-as2-ni-${SLURM_JOB_ID}
 GRASP_PREVIOUS_WAVE=$previous \

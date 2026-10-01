@@ -107,7 +107,7 @@
       permdir = '  '   ;    file1     = '  '
       tmpdir = '  '    ;    file2     = '  '
       CALL startmpi2 (myid, nprocs, host, lenhost, ncount1,       &
-                      startdir, permdir, tmpdir, 'RMCDHF_MPI')
+                      startdir, permdir, tmpdir, 'RMCDHF_ORBOPT_MPI')
       CALL SET_ORBOPT_TRACE_DIRECTORY(startdir)
       COUNT_TRACE_RANK = myid
       CALL INIT_ORBOPT_CONTROL
@@ -239,6 +239,6 @@
 !  Execution finished; Statistics output
 !=======================================================================
 
-      CALL stopmpi2 (myid, nprocs, host, lenhost, ncount1, 'RMCDHF_MPI')
+      CALL stopmpi2 (myid, nprocs, host, lenhost, ncount1, 'RMCDHF_ORBOPT_MPI')
 
       END PROGRAM RSCFmpiVU

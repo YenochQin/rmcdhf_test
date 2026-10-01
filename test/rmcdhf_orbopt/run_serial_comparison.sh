@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Re-run one prepared MPI case with serial rangular/rmcdhf and compare results.
+# Re-run one prepared MPI case with serial rangular/rmcdhf_orbopt and compare results.
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
@@ -36,7 +36,7 @@ if [[ -e $output_dir ]]; then
     echo "output directory already exists: $output_dir" >&2
     exit 2
 fi
-for executable in rangular rmcdhf; do
+for executable in rangular rmcdhf_orbopt; do
     if [[ ! -x $binary_dir/$executable ]]; then
         echo "missing executable: $binary_dir/$executable" >&2
         exit 2
@@ -59,7 +59,7 @@ cd "$output_dir"
 export OMP_NUM_THREADS=${GRASP_OMP_THREADS:-1}
 export OPENBLAS_NUM_THREADS=${GRASP_OMP_THREADS:-1}
 "$binary_dir/rangular" < rangular.stdin > rangular.stdout 2>&1
-"$binary_dir/rmcdhf" < rmcdhf.stdin > rmcdhf.stdout 2>&1
+"$binary_dir/rmcdhf_orbopt" < rmcdhf.stdin > rmcdhf.stdout 2>&1
 python3 "$repo_root/test/rmcdhf_orbopt/compare_sum.py" \
     "$output_dir/rmcdhf.sum" "$mpi_case/rmcdhf.sum" \
     > "$output_dir/serial_mpi_comparison.csv"
