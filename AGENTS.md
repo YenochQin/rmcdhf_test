@@ -6,43 +6,48 @@ GRASP is a Fortran 90/95 atomic-structure package. Sources live in `src/`:
 `src/lib/` contains shared libraries (for example, `libmod` and `lib9290`),
 `src/appl/` contains executable programs (including MPI variants), and
 `src/tool/` contains supporting tools. Components have `CMakeLists.txt`,
-`Makefile`, and Fortran `.f90` sources. CMake tests are under `test/`; examples
+`Makefile`, and Fortran `.f90` sources. CMake tests are under `test/`;
 scientific examples and regression-style workflows are under
 `grasptest/`. Built executables and archives are installed in `bin/` and `lib/`.
 
 ## Build, Test, and Development Commands
 
-All Python helper scripts, audits, and Python-based tests in this repository must use `../graspkit-tools/.venv`, the workspace's single Python environment created and synchronized by running `uv sync` in `graspkit-tools/`. Do not run `uv venv`, `uv sync`, or `uv run` here, and do not create, activate, or use `rmcdhf_test/.venv`. Activate the shared environment with `source ../graspkit-tools/.venv/bin/activate` before invoking Python tooling. This does not replace the Fortran, CMake, compiler, BLAS, or MPI setup described below.
+All Python helpers and tests use `../graspkit-tools/.venv`, created and synchronized
+from Tools with its selected CPU/GPU extra. Activate it before Python tooling or
+call its interpreter directly. Do not run `uv venv`, `uv sync`, or `uv run` here,
+or create a local environment. The Fortran toolchain is configured separately.
 
-Before configuring or compiling, initialize the MPI toolchain in the shell:
+Before configuring or compiling, initialize the host's compiler, BLAS/LAPACK, and
+MPI toolchain. For Linux clusters using the documented Environment Modules setup:
 
 ```sh
 source /usr/share/Modules/init/zsh
 module load mpi/openmpi-x86_64
 ```
 
-This step is required even for serial targets so that the compiler and BLAS/MPI
-environment are consistent across comparison runs.
+Use the cluster's actual initialization path and module names. On macOS or hosts
+without Environment Modules, use the installed toolchain through `PATH` and CMake
+settings. Keep compiler and BLAS/MPI choices consistent across comparison runs,
+including serial targets; record differences when comparing across hosts.
 
 Use an out-of-source CMake build:
 
 ```sh
-source /usr/share/Modules/init/zsh
-module load mpi/openmpi-x86_64 # activate MPI compiler wrappers first
-module list
 ./configure.sh --debug   # create build-debug/ with debug symbols
 cmake --build build-debug -j4
-ctest --test-dir build-debug --output-on-failure
-cmake --install build-debug
-ldd build-debug/bin/rmcdhf_orbopt_mpi | rg 'flexiblas|openblas'
+ctest --test-dir build-debug -R rnucleus --output-on-failure
 ```
 
-Run `./configure.sh` without arguments for a Release `build/` directory. CMake
+Select the CTest filter for the affected program. Install with `cmake --install build-debug`
+when checking installed executables. Run `./configure.sh` without arguments for a
+Release `build/` directory. Reuse an existing configured build when appropriate. CMake
 requires a Fortran compiler plus BLAS/LAPACK; MPI targets are enabled only when
 MPI Fortran is found. Its Fortran flags include `-fallow-argument-mismatch`,
 which is required for legacy calls such as `lib9290/iniest2.f90` with modern
-gfortran. Confirm CMake reports `BLAS_LIBRARIES` and `LAPACK_LIBRARIES`, then
-use the `ldd` check above to verify FlexiBLAS selects OpenBLAS. Legacy `make`
+gfortran. Confirm CMake reports the intended `BLAS_LIBRARIES` and `LAPACK_LIBRARIES`.
+Inspect linked libraries with `ldd` on Linux or `otool -L` on macOS; where a BLAS
+dispatcher such as FlexiBLAS is used, also confirm its selected runtime backend.
+Legacy `make`
 builds in the source tree: use `make src/appl/rci90_mpi`; do not parallelize it.
 Put compiler or linker overrides in untracked `Make.user`, never in `Makefile`.
 
@@ -60,8 +65,10 @@ unrelated reformatting.
 Add or adjust CTest coverage for changed behavior in `test/CMakeLists.txt`.
 Name tests by scope, e.g. `integration.rnucleus.Z1`, and keep test inputs in
 the relevant `test/integration/` directory. Run the focused test with
-`ctest --test-dir build -R rnucleus --output-on-failure`; run the full suite
-before submitting when practical. There is no stated coverage threshold.
+`ctest --test-dir build -R rnucleus --output-on-failure`; expand to the full suite
+for shared numerical code, libraries, or build changes. Documentation-only changes
+need relevant link and command checks. Fix failures introduced by the change and
+report remaining limitations; distinguish regression evidence from physical validation.
 
 ## Commit & Pull Request Guidelines
 
